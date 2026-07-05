@@ -1,0 +1,36 @@
+# Node
+frontend/node_modules/
+backend/__pycache__/
+backend/.pytest_cache/
+
+# Python
+*.pyc
+*.pyo
+__pycache__/
+
+# Env
+.env
+
+# Database
+*.db
+
+# Logs
+*.log
+
+# Next
+frontend/.next/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+frontend/node_modules/
+frontend/.next/
+frontend/node_modules/
+frontend/.next/
+backend/__pycache__/
+*.pyc
+.env

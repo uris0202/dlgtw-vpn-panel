@@ -1,0 +1,91 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: vpnpanel-postgres
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - vpnpanel
+
+  backend:
+    build: ./backend
+    container_name: vpnpanel-backend
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    depends_on:
+      - postgres
+
+    expose:
+      - "8000"
+    
+    volumes:
+    - ./backend:/app
+
+    networks:
+      - vpnpanel
+
+  frontend:
+    build: ./frontend
+    container_name: vpnpanel-frontend
+
+    restart: unless-stopped
+
+    depends_on:
+      - backend
+
+    expose:
+      - "3000"
+
+    volumes:
+    - ./frontend:/app
+    - /app/node_modules
+
+    networks:
+      - vpnpanel
+
+  caddy:
+    image: caddy:2
+
+    container_name: vpnpanel-caddy
+
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    depends_on:
+      - frontend
+      - backend
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+    networks:
+      - vpnpanel
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  vpnpanel:
