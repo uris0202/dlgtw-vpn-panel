@@ -26,7 +26,7 @@ export default function Sidebar() {
                 Поиск
             </NavLink>
 
-            <NavLink href="/servers">
+            <NavLink href="/clients">
                 Клиенты
             </NavLink>
 

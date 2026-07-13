@@ -56,6 +56,7 @@ function ClientsContent() {
 
     async function loadClients() {
 
+        setLoading(true);
         setPageError("");
 
         const me = await getMe();
@@ -68,7 +69,33 @@ function ClientsContent() {
         setUser(me);
 
         if (!serverId) {
-            setPageError("Сервер не выбран.");
+
+            try {
+
+                const response = await api.get(
+                    "/servers",
+                    getAuthConfig(),
+                );
+                const loadedServers = Array.isArray(response.data)
+                    ? response.data
+                    : [];
+                const firstServer = loadedServers[0];
+
+                setServers(loadedServers);
+
+                if (firstServer) {
+                    router.replace(`/clients?server=${firstServer.id}`);
+                    return;
+                }
+
+                setPageError("Сначала добавьте VPN-сервер.");
+
+            } catch (error) {
+
+                setPageError(getErrorMessage(error, "Не удалось загрузить серверы."));
+
+            }
+
             setLoading(false);
             return;
         }
@@ -392,8 +419,26 @@ function ClientsContent() {
                                 display: "flex",
                                 gap: 10,
                                 alignItems: "center",
+                                flexWrap: "wrap",
                             }}
                         >
+                            <select
+                                value={serverId || ""}
+                                onChange={(event) => router.push(
+                                    `/clients?server=${event.target.value}`
+                                )}
+                                style={serverSelect}
+                            >
+                                {serverOptions.map((server) => (
+                                    <option
+                                        key={server.id}
+                                        value={server.id}
+                                    >
+                                        {server.name}
+                                    </option>
+                                ))}
+                            </select>
+
                             <button
                                 onClick={refreshClients}
                                 disabled={refreshing}
@@ -619,6 +664,16 @@ function fallbackCopy(value) {
     document.body.removeChild(textarea);
 
 }
+
+const serverSelect = {
+    minWidth: 180,
+    padding: "10px 12px",
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    background: "#fff",
+    color: "#111827",
+    fontSize: 14,
+};
 
 const filterControl = {
     width: "100%",
