@@ -11,6 +11,7 @@ from app.db.deps import get_db
 from app.schemas.server import (
     ServerCreate,
     ServerResponse,
+    ServerUpdate,
 )
 
 from app.services.server_service import ServerService
@@ -48,6 +49,31 @@ def create_server(
     service = ServerService(db)
 
     return service.create(server)
+
+
+@router.patch(
+    "/{server_id}",
+    response_model=ServerResponse,
+)
+def update_server(
+    server_id: int,
+    payload: ServerUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+
+    service = ServerService(db)
+
+    server = service.get(server_id)
+
+    if server is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Server not found",
+        )
+
+    return service.update(server, payload)
 
 
 @router.delete("/{server_id}")

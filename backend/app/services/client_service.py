@@ -1,7 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
+
 from sqlalchemy.orm import Session
 
 from app.services.server_service import ServerService
+from app.services.settings_service import SettingsService
 from app.services.xui_service import XUIService
+from app.services.vless_service import attach_client_links
 
 
 class ClientService:
@@ -23,37 +28,35 @@ class ClientService:
         server_id: int,
     ):
 
-        data = self._connect(server_id).get_all()
+        server = ServerService(self.db).get(server_id)
+
+        if server is None:
+            raise Exception("Server not found")
+
+        xui = XUIService.connect(server)
+
+        data = xui.get_all()
 
         clients = []
 
         for item in data.get("items", []):
 
-            traffic = item.get("traffic", {})
-
-            up = traffic.get("up", 0)
-            down = traffic.get("down", 0)
-
-            clients.append({
-                "email": item.get("email"),
-                "group": item.get("group", ""),
-                "comment": item.get("comment", ""),
-                "enabled": item.get("enable", False),
-
-                # Использованный трафик
-                "traffic": up + down,
-
-                "up": up,
-                "down": down,
-
-                "last_online": traffic.get("lastOnline", 0),
-
-                "expiry": item.get("expiryTime", 0),
-                "created": item.get("createdAt", 0),
-                "updated": item.get("updatedAt", 0),
-            })
+            clients.append(self._format_client(item))
 
         summary = data.get("summary", {})
+
+        try:
+            settings = SettingsService(self.db).get()
+
+            clients = attach_client_links(
+                server=server,
+                clients=clients,
+                inbounds=xui.get_inbounds(),
+                subscription_port=settings.subscription_port,
+                subscription_path=settings.subscription_path,
+            )
+        except Exception:
+            pass
 
         return {
             "total": data.get("total", 0),
@@ -85,6 +88,91 @@ class ClientService:
             comment=client.comment,
         )
 
+    def renew_or_create(
+        self,
+        server_id: int,
+        email: str,
+        inbound_id: int | None,
+        days: int,
+        total_gb: int,
+        group: str = "",
+        comment: str = "",
+    ):
+
+        xui = self._connect(server_id)
+
+        try:
+            data = xui.get(email)
+            client = data["client"]
+        except Exception:
+            resolved_inbound_id = self._resolve_inbound_id(
+                xui,
+                inbound_id,
+            )
+
+            return xui.add(
+                inbound_id=resolved_inbound_id,
+                email=email,
+                days=days,
+                total_gb=total_gb,
+                group=group,
+                comment=comment,
+            )
+
+        values = {
+            "enable": True,
+        }
+
+        if days is not None:
+
+            if days > 0:
+                import time
+
+                now_ms = int(time.time() * 1000)
+                current_expiry = int(client.get("expiryTime") or 0)
+                base_expiry = max(current_expiry, now_ms)
+
+                values["expiryTime"] = int(
+                    base_expiry + days * 86400 * 1000
+                )
+            else:
+                values["expiryTime"] = 0
+
+        if total_gb is not None:
+            values["totalGB"] = total_gb * 1024 ** 3
+
+        return xui.update(
+            email,
+            **values,
+        )
+
+    def _resolve_inbound_id(
+        self,
+        xui,
+        inbound_id: int | None,
+    ):
+
+        inbounds = xui.get_inbounds()
+
+        if inbound_id:
+
+            for inbound in inbounds:
+
+                if int(inbound.get("id") or 0) == int(inbound_id):
+                    return int(inbound_id)
+
+        for inbound in inbounds:
+
+            if inbound.get("protocol") == "vless":
+                return int(inbound.get("id"))
+
+        for inbound in inbounds:
+
+            if inbound.get("id"):
+                return int(inbound.get("id"))
+
+        raise Exception("VLESS inbound not found on selected server")
+
     def update(
         self,
         server_id: int,
@@ -95,6 +183,13 @@ class ClientService:
         xui = self._connect(server_id)
 
         values = {}
+
+        if client.email is not None:
+
+            new_email = client.email.strip()
+
+            if new_email:
+                values["email"] = new_email
 
         if client.group is not None:
             values["group"] = client.group
@@ -135,34 +230,136 @@ class ClientService:
     ):
 
         result = []
+        query = email.strip().lower()
 
-        servers = ServerService(self.db).get_all()
+        if not query:
+            return result
 
-        for server in servers:
+        servers = [
+            self._server_ref(server)
+            for server in ServerService(self.db).get_all()
+        ]
+        settings = SettingsService(self.db).get()
+
+        with ThreadPoolExecutor(max_workers=self._worker_count(servers)) as executor:
+            results = executor.map(
+                lambda server: self._search_server(
+                    server,
+                    query,
+                    settings,
+                ),
+                servers,
+            )
+
+            for clients in results:
+                result.extend(clients)
+
+        return result
+
+    def _search_server(self, server, query, settings):
+
+        xui = None
+
+        try:
+            xui = XUIService.connect(server)
+            data = xui.get_all()
+            clients = []
+
+            for item in data.get("items", []):
+
+                client = self._format_client(item)
+
+                if self._matches_search(client, query):
+                    clients.append(client)
 
             try:
-
-                xui = XUIService.connect(server)
-
-                client = xui.get(email)
-
-                info = client["client"]
-
-                result.append({
-                    "server_id": server.id,
-                    "server": server.name,
-                    "country": server.country,
-                    "email": info["email"],
-                    "group": info.get("group", ""),
-                    "comment": info.get("comment", ""),
-                    "enabled": info.get("enable", False),
-                    "traffic": client.get("usedTraffic", 0),
-                    "expiry": info.get("expiryTime", 0),
-                    "uuid": info.get("uuid"),
-                    "inbound": client.get("inboundIds", []),
-                })
-
+                clients = attach_client_links(
+                    server=server,
+                    clients=clients,
+                    inbounds=xui.get_inbounds(),
+                    subscription_port=settings.subscription_port,
+                    subscription_path=settings.subscription_path,
+                )
             except Exception:
                 pass
 
-        return result
+            return [
+                {
+                    "server_id": server.id,
+                    "server": server.name,
+                    "country": server.country,
+                    **client,
+                }
+                for client in clients
+            ]
+
+        except Exception:
+            return []
+        finally:
+            self._close_xui(xui)
+
+    def _server_ref(self, server):
+
+        return SimpleNamespace(
+            id=server.id,
+            name=server.name,
+            country=server.country,
+            host=server.host,
+            username=server.username,
+            password=server.password,
+            base_path=server.base_path,
+        )
+
+    def _worker_count(self, items):
+
+        return max(1, min(6, len(items) or 1))
+
+    def _close_xui(self, xui):
+
+        if xui is None:
+            return
+
+        try:
+            xui.client.close()
+        except Exception:
+            pass
+
+    def _format_client(self, item):
+
+        traffic = item.get("traffic", {})
+
+        up = traffic.get("up", item.get("up", 0))
+        down = traffic.get("down", item.get("down", 0))
+
+        return {
+            "email": item.get("email"),
+            "group": item.get("group", ""),
+            "comment": item.get("comment", ""),
+            "enabled": item.get("enable", item.get("enabled", False)),
+
+            # Использованный трафик
+            "traffic": up + down,
+
+            "up": up,
+            "down": down,
+
+            "last_online": traffic.get("lastOnline", item.get("lastOnline", 0)),
+
+            "expiry": item.get("expiryTime", item.get("expiry", 0)),
+            "created": item.get("createdAt", 0),
+            "updated": item.get("updatedAt", 0),
+        }
+
+    def _matches_search(self, client, query):
+
+        values = [
+            client.get("email"),
+            client.get("group"),
+            client.get("comment"),
+        ]
+
+        return any(
+            query in str(value).lower()
+            for value in values
+            if value
+        )

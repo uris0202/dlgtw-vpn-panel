@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -52,10 +52,16 @@ def create_client(
 
     service = ClientService(db)
 
-    service.create(
-        server_id,
-        client,
-    )
+    try:
+        service.create(
+            server_id,
+            client,
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
 
     return {
         "success": True,
@@ -73,11 +79,17 @@ def update_client(
 
     service = ClientService(db)
 
-    service.update(
-        server_id,
-        email,
-        client,
-    )
+    try:
+        service.update(
+            server_id,
+            email,
+            client,
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
 
     return {
         "success": True,
@@ -94,10 +106,16 @@ def delete_client(
 
     service = ClientService(db)
 
-    service.delete(
-        server_id,
-        email,
-    )
+    try:
+        service.delete(
+            server_id,
+            email,
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
 
     return {
         "success": True,

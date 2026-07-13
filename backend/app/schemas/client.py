@@ -11,6 +11,7 @@ class ClientCreate(BaseModel):
 
 
 class ClientUpdate(BaseModel):
+    email: str | None = None
     group: str | None = None
     comment: str | None = None
     enable: bool | None = None

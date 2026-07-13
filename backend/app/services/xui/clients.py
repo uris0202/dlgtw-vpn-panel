@@ -112,11 +112,11 @@ class XUIClients(XUIInbounds):
 
     def update(
         self,
-        email: str,
+        current_email: str,
         **kwargs,
     ):
 
-        data = self.get(email)
+        data = self.get(current_email)
 
         client = data["client"]
 
@@ -141,7 +141,7 @@ class XUIClients(XUIInbounds):
         payload.update(kwargs)
 
         response = self.client.post(
-            f"/panel/api/clients/update/{email}",
+            f"/panel/api/clients/update/{current_email}",
             json=payload,
         )
 

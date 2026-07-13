@@ -22,6 +22,12 @@ def register(
 ):
     service = UserService(db)
 
+    if db.query(User).count() > 0:
+        raise HTTPException(
+            status_code=403,
+            detail="Registration is closed",
+        )
+
     if service.get_by_email(user.email):
         raise HTTPException(
             status_code=400,

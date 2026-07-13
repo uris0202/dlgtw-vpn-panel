@@ -3,7 +3,7 @@ from app.services.xui.auth import XUIAuth
 
 class XUIInbounds(XUIAuth):
 
-    def get_all(self):
+    def get_inbounds(self):
 
         response = self.client.get(
             "/panel/api/inbounds/list"

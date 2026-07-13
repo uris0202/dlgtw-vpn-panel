@@ -14,12 +14,60 @@ export default function Sidebar() {
 
             <hr style={{ margin: "20px 0", opacity: .3 }} />
 
-            <div style={{ marginBottom: 18 }}>🏠 Главная</div>
-            <div style={{ marginBottom: 18 }}>🌍 Серверы</div>
-            <div style={{ marginBottom: 18 }}>📱 Устройства</div>
-            <div style={{ marginBottom: 18 }}>📦 Подписка</div>
-            <div style={{ marginBottom: 18 }}>👤 Профиль</div>
-            <div>⚙ Настройки</div>
+            <NavLink href="/dashboard">
+                Главная
+            </NavLink>
+
+            <NavLink href="/servers">
+                Серверы
+            </NavLink>
+
+            <NavLink href="/search">
+                Поиск
+            </NavLink>
+
+            <NavLink href="/servers">
+                Клиенты
+            </NavLink>
+
+            <NavLink href="/subscriptions">
+                Подписка
+            </NavLink>
+
+            <NavLink href="/plans">
+                Тарифы
+            </NavLink>
+
+            <NavLink href="/orders">
+                Заказы
+            </NavLink>
+
+            <NavLink href="/accounts">
+                Кабинеты клиентов
+            </NavLink>
+
+            <NavLink href="/settings">
+                Настройки
+            </NavLink>
         </aside>
+    );
+}
+
+function NavLink({
+    href,
+    children,
+}) {
+    return (
+        <a
+            href={href}
+            style={{
+                display: "block",
+                marginBottom: 18,
+                color: "white",
+                textDecoration: "none",
+            }}
+        >
+            {children}
+        </a>
     );
 }

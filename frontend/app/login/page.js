@@ -10,12 +10,19 @@ export default function LoginPage() {
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    async function login() {
+    async function login(event) {
+
+        event.preventDefault();
+        setError("");
+        setLoading(true);
+
         try {
 
             const response = await api.post("/auth/login", {
-                email,
+                email: email.trim(),
                 password,
             });
 
@@ -24,12 +31,15 @@ export default function LoginPage() {
                 response.data.access_token
             );
 
-            router.push("/dashboard");
+            router.push(getNextPath());
 
         } catch (e) {
 
-            alert("Неверный логин или пароль");
-            console.error(e);
+            setError(getErrorMessage(e, "Неверный логин или пароль"));
+
+        } finally {
+
+            setLoading(false);
 
         }
     }
@@ -45,7 +55,8 @@ export default function LoginPage() {
                 fontFamily: "Arial",
             }}
         >
-            <div
+            <form
+                onSubmit={login}
                 style={{
                     width: 420,
                     background: "#fff",
@@ -99,8 +110,24 @@ export default function LoginPage() {
                     }}
                 />
 
+                {error && (
+                    <div
+                        style={{
+                            marginBottom: 15,
+                            padding: 12,
+                            borderRadius: 8,
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            fontSize: 14,
+                        }}
+                    >
+                        {error}
+                    </div>
+                )}
+
                 <button
-                    onClick={login}
+                    type="submit"
+                    disabled={loading}
                     style={{
                         width: "100%",
                         padding: 13,
@@ -112,8 +139,41 @@ export default function LoginPage() {
                         cursor: "pointer",
                     }}
                 >
-                    Войти
+                    {loading ? "Вход..." : "Войти"}
                 </button>
+
+                <a
+                    href="/buy"
+                    style={{
+                        display: "block",
+                        width: "100%",
+                        boxSizing: "border-box",
+                        marginTop: 12,
+                        padding: 13,
+                        color: "#2563eb",
+                        border: "1px solid #2563eb",
+                        borderRadius: 8,
+                        fontSize: 16,
+                        textAlign: "center",
+                        textDecoration: "none",
+                    }}
+                >
+                    Купить VPN
+                </a>
+
+                <a
+                    href="/account"
+                    style={{
+                        display: "block",
+                        marginTop: 14,
+                        color: "#2563eb",
+                        textAlign: "center",
+                        textDecoration: "none",
+                        fontWeight: 700,
+                    }}
+                >
+                    Личный кабинет клиента
+                </a>
 
                 <div
                     style={{
@@ -127,7 +187,46 @@ export default function LoginPage() {
                         Зарегистрироваться
                     </a>
                 </div>
-            </div>
+            </form>
         </main>
     );
+}
+
+function getErrorMessage(error, fallback) {
+
+    const detail = error?.response?.data?.detail;
+
+    if (typeof detail === "string") {
+        if (detail === "Invalid credentials") {
+            return "Неверный логин или пароль";
+        }
+
+        return detail;
+    }
+
+    if (Array.isArray(detail)) {
+        return detail
+            .map((item) => item?.msg)
+            .filter(Boolean)
+            .join(". ");
+    }
+
+    return error?.message || fallback;
+
+}
+
+function getNextPath() {
+
+    const nextPath = new URLSearchParams(window.location.search).get("next");
+
+    if (
+        nextPath
+        && nextPath.startsWith("/")
+        && !nextPath.startsWith("//")
+    ) {
+        return nextPath;
+    }
+
+    return "/dashboard";
+
 }

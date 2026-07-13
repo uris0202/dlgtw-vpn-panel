@@ -1,4 +1,8 @@
 import httpx
+import os
+
+
+REQUEST_TIMEOUT = float(os.getenv("XUI_REQUEST_TIMEOUT", "8"))
 
 
 class XUIClient:
@@ -16,7 +20,7 @@ class XUIClient:
             base_url=self.host + self.base_path,
             verify=verify,
             follow_redirects=True,
-            timeout=20,
+            timeout=REQUEST_TIMEOUT,
         )
 
         self.csrf = None

@@ -29,6 +29,21 @@ class ServerService:
 
         return server
 
+    def update(self, server: Server, data):
+        values = data.model_dump(
+            mode="json",
+            exclude_unset=True,
+        )
+
+        for key, value in values.items():
+            if value is not None:
+                setattr(server, key, value)
+
+        self.db.commit()
+        self.db.refresh(server)
+
+        return server
+
     def delete(self, server: Server):
         self.db.delete(server)
         self.db.commit()

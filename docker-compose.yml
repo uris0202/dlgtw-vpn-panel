@@ -52,10 +52,6 @@ services:
     expose:
       - "3000"
 
-    volumes:
-    - ./frontend:/app
-    - /app/node_modules
-
     networks:
       - vpnpanel
 

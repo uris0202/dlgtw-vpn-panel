@@ -12,12 +12,23 @@ class ServerCreate(BaseModel):
     enabled: bool = True
 
 
+class ServerUpdate(BaseModel):
+    name: str | None = None
+    country: str | None = None
+    host: HttpUrl | None = None
+    base_path: str | None = None
+    username: str | None = None
+    password: str | None = None
+    enabled: bool | None = None
+
+
 class ServerResponse(BaseModel):
     id: int
     name: str
     country: str
     host: str
     base_path: str
+    username: str
     enabled: bool
 
     class Config:
