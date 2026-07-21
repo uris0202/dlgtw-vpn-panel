@@ -1,53 +1,42 @@
 "use client";
 
-export default function Header({
-    user,
-    onLogout,
-}) {
+import {
+    LogOut,
+    UserRound,
+} from "lucide-react";
 
+import { Button } from "./ui/button";
+
+export default function Header({ user, onLogout }) {
     return (
-
-        <div
-            style={{
-                background: "white",
-                padding: 25,
-                borderBottom: "1px solid #eee",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-            }}
-        >
-
-            <h2>Личный кабинет</h2>
-
-            <div
-                style={{
-                    display: "flex",
-                    gap: 15,
-                    alignItems: "center",
-                }}
-            >
-
-                <b>{user?.email}</b>
-
-                <button
-                    onClick={onLogout}
-                    style={{
-                        background: "#ef4444",
-                        color: "white",
-                        border: 0,
-                        borderRadius: 6,
-                        padding: "8px 14px",
-                        cursor: "pointer",
-                    }}
-                >
-                    Выйти
-                </button>
-
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-white/95 pr-4 pl-16 sm:pr-6 lg:px-8">
+            <div>
+                <div className="text-sm font-semibold text-foreground">Администрирование</div>
+                <div className="hidden text-xs text-muted-foreground sm:block">Управление VPN-инфраструктурой</div>
             </div>
 
-        </div>
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <div className="hidden min-w-0 items-center gap-2 sm:flex">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                        <UserRound className="size-4" />
+                    </div>
+                    <span className="max-w-52 truncate text-sm font-medium text-foreground">
+                        {user?.email || "Администратор"}
+                    </span>
+                </div>
 
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={onLogout}
+                    title="Выйти"
+                    aria-label="Выйти"
+                    className="text-muted-foreground hover:text-destructive"
+                >
+                    <LogOut />
+                </Button>
+            </div>
+        </header>
     );
-
 }

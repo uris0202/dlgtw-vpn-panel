@@ -13,6 +13,10 @@ class SettingsUpdate(BaseModel):
     payment_phone: str | None = None
     payment_recipient: str | None = None
     payment_instructions: str | None = None
+    telegram_notifications_enabled: bool | None = None
+    telegram_bot_token: str | None = Field(default=None, max_length=255)
+    telegram_bot_token_clear: bool = False
+    telegram_chat_id: str | None = Field(default=None, max_length=100)
 
 
 class SettingsResponse(BaseModel):
@@ -27,6 +31,9 @@ class SettingsResponse(BaseModel):
     payment_phone: str
     payment_recipient: str
     payment_instructions: str
+    telegram_notifications_enabled: bool
+    telegram_bot_token_configured: bool
+    telegram_chat_id: str
 
     class Config:
         from_attributes = True

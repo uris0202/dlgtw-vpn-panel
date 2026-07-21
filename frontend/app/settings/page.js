@@ -16,6 +16,9 @@ export default function SettingsPage() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [testingTelegram, setTestingTelegram] = useState(false);
+    const [discoveringTelegramChats, setDiscoveringTelegramChats] = useState(false);
+    const [telegramChats, setTelegramChats] = useState([]);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [form, setForm] = useState(getEmptyForm());
@@ -102,6 +105,15 @@ export default function SettingsPage() {
                     payment_phone: form.payment_phone.trim(),
                     payment_recipient: form.payment_recipient.trim(),
                     payment_instructions: form.payment_instructions.trim(),
+                    telegram_notifications_enabled: Boolean(
+                        form.telegram_notifications_enabled
+                    ),
+                    telegram_chat_id: form.telegram_chat_id.trim(),
+                    ...(form.telegram_bot_token.trim()
+                        ? {
+                            telegram_bot_token: form.telegram_bot_token.trim(),
+                        }
+                        : {}),
                 },
                 getAuthConfig(),
             );
@@ -117,6 +129,95 @@ export default function SettingsPage() {
 
             setSaving(false);
 
+        }
+
+    }
+
+    async function testTelegram() {
+
+        setTestingTelegram(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await api.post(
+                "/settings/telegram/test",
+                {
+                    chat_id: form.telegram_chat_id.trim(),
+                },
+                getAuthConfig(),
+            );
+
+            const messageId = response.data?.message_id;
+            setSuccess(
+                messageId
+                    ? `Telegram принял сообщение. ID: ${messageId}.`
+                    : "Тестовое сообщение отправлено в Telegram."
+            );
+        } catch (error) {
+            setError(getErrorMessage(error, "Не удалось отправить тестовое сообщение."));
+        } finally {
+            setTestingTelegram(false);
+        }
+
+    }
+
+    async function discoverTelegramChats() {
+
+        setDiscoveringTelegramChats(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await api.get(
+                "/settings/telegram/chats",
+                getAuthConfig(),
+            );
+            const chats = Array.isArray(response.data?.chats)
+                ? response.data.chats
+                : [];
+
+            setTelegramChats(chats);
+
+            if (chats.length === 0) {
+                setError("Чаты не найдены. Отправьте боту сообщение и повторите поиск.");
+            } else {
+                setSuccess(`Найдено чатов: ${chats.length}.`);
+            }
+        } catch (error) {
+            setError(getErrorMessage(error, "Не удалось получить чаты Telegram."));
+        } finally {
+            setDiscoveringTelegramChats(false);
+        }
+
+    }
+
+    async function removeTelegramToken() {
+
+        if (!confirm("Удалить сохранённый токен Telegram-бота?")) {
+            return;
+        }
+
+        setSaving(true);
+        setError("");
+        setSuccess("");
+
+        try {
+            const response = await api.patch(
+                "/settings",
+                {
+                    telegram_bot_token_clear: true,
+                },
+                getAuthConfig(),
+            );
+
+            setForm(settingsToForm(response.data));
+            setTelegramChats([]);
+            setSuccess("Токен Telegram удалён, уведомления выключены.");
+        } catch (error) {
+            setError(getErrorMessage(error, "Не удалось удалить Telegram-токен."));
+        } finally {
+            setSaving(false);
         }
 
     }
@@ -291,6 +392,126 @@ export default function SettingsPage() {
                             />
                         </section>
 
+                        <section style={section}>
+                            <h2 style={sectionTitle}>
+                                Telegram
+                            </h2>
+
+                            <label style={checkboxRow}>
+                                <input
+                                    type="checkbox"
+                                    checked={form.telegram_notifications_enabled}
+                                    onChange={(event) => updateField(
+                                        "telegram_notifications_enabled",
+                                        event.target.checked,
+                                    )}
+                                    disabled={saving}
+                                />
+
+                                <span>
+                                    Уведомления о заказах и активации
+                                </span>
+                            </label>
+
+                            <div style={fieldGrid}>
+                                <Field
+                                    label="Токен бота"
+                                    type="password"
+                                    value={form.telegram_bot_token}
+                                    onChange={(value) => updateField("telegram_bot_token", value)}
+                                    disabled={saving}
+                                    placeholder={form.telegram_bot_token_configured
+                                        ? "Токен сохранён"
+                                        : "123456789:AA..."
+                                    }
+                                    required={false}
+                                />
+
+                                <Field
+                                    label="Chat ID"
+                                    value={form.telegram_chat_id}
+                                    onChange={(value) => updateField("telegram_chat_id", value)}
+                                    disabled={saving}
+                                    placeholder="123456789 или @channel"
+                                    required={false}
+                                />
+                            </div>
+
+                            <div style={telegramActions}>
+                                <span style={telegramStatus}>
+                                    {form.telegram_bot_token_configured
+                                        ? "Токен настроен"
+                                        : "Токен не задан"
+                                    }
+                                </span>
+
+                                <button
+                                    type="button"
+                                    onClick={discoverTelegramChats}
+                                    disabled={
+                                        saving
+                                        || discoveringTelegramChats
+                                        || !form.telegram_bot_token_configured
+                                    }
+                                    style={secondaryButton}
+                                >
+                                    {discoveringTelegramChats
+                                        ? "Поиск..."
+                                        : "Найти Chat ID"
+                                    }
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={testTelegram}
+                                    disabled={
+                                        saving
+                                        || testingTelegram
+                                        || !form.telegram_bot_token_configured
+                                        || !form.telegram_chat_id.trim()
+                                    }
+                                    style={secondaryButton}
+                                >
+                                    {testingTelegram ? "Отправка..." : "Отправить тест"}
+                                </button>
+
+                                {form.telegram_bot_token_configured && (
+                                    <button
+                                        type="button"
+                                        onClick={removeTelegramToken}
+                                        disabled={saving || testingTelegram}
+                                        style={dangerButton}
+                                    >
+                                        Удалить токен
+                                    </button>
+                                )}
+                            </div>
+
+                            {telegramChats.length > 0 && (
+                                <select
+                                    value=""
+                                    onChange={(event) => {
+                                        updateField("telegram_chat_id", event.target.value);
+                                        setTelegramChats([]);
+                                    }}
+                                    style={telegramSelect}
+                                >
+                                    <option value="">
+                                        Выберите найденный чат
+                                    </option>
+
+                                    {telegramChats.map((chat) => (
+                                        <option
+                                            key={chat.id}
+                                            value={chat.id}
+                                        >
+                                            {chat.name} · {chat.id} · {chat.type}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </section>
+
                         <div style={actions}>
                             <button
                                 type="button"
@@ -344,6 +565,7 @@ function Field({
                 min={min}
                 max={max}
                 required={required}
+                autoComplete={type === "password" ? "new-password" : undefined}
                 style={input}
             />
         </label>
@@ -391,6 +613,10 @@ function getEmptyForm() {
         payment_phone: "",
         payment_recipient: "",
         payment_instructions: "",
+        telegram_notifications_enabled: false,
+        telegram_bot_token: "",
+        telegram_bot_token_configured: false,
+        telegram_chat_id: "",
     };
 
 }
@@ -408,6 +634,14 @@ function settingsToForm(settings) {
         payment_phone: settings.payment_phone || "",
         payment_recipient: settings.payment_recipient || "",
         payment_instructions: settings.payment_instructions || "",
+        telegram_notifications_enabled: Boolean(
+            settings.telegram_notifications_enabled
+        ),
+        telegram_bot_token: "",
+        telegram_bot_token_configured: Boolean(
+            settings.telegram_bot_token_configured
+        ),
+        telegram_chat_id: settings.telegram_chat_id || "",
     };
 
 }
@@ -513,6 +747,27 @@ const field = {
     gap: 6,
 };
 
+const checkboxRow = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    color: "#111827",
+    fontSize: 14,
+};
+
+const telegramActions = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+};
+
+const telegramStatus = {
+    marginRight: "auto",
+    color: "#6b7280",
+    fontSize: 14,
+};
+
 const labelStyle = {
     color: "#374151",
     fontSize: 14,
@@ -528,6 +783,11 @@ const input = {
     background: "#fff",
     color: "#111827",
     fontSize: 15,
+};
+
+const telegramSelect = {
+    ...input,
+    maxWidth: 520,
 };
 
 const textarea = {
@@ -570,6 +830,12 @@ const secondaryButton = {
     background: "#fff",
     color: "#111827",
     fontSize: 14,
+};
+
+const dangerButton = {
+    ...secondaryButton,
+    borderColor: "#fecaca",
+    color: "#b91c1c",
 };
 
 const errorBox = {

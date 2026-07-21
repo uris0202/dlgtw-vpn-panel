@@ -120,22 +120,27 @@ class XUIClients(XUIInbounds):
 
         client = data["client"]
 
+        client_id = client.get("uuid") or client.get("id")
+
+        if not client_id:
+            raise Exception("Unable to update client: client id is missing")
+
         payload = {
-            "email": client["email"],
-            "subId": client["subId"],
-            "id": client["uuid"],
-            "password": client["password"],
-            "auth": client["auth"],
-            "flow": client["flow"],
-            "security": client["security"],
-            "limitIp": client["limitIp"],
-            "totalGB": client["totalGB"],
-            "expiryTime": client["expiryTime"],
-            "enable": client["enable"],
-            "tgId": client["tgId"],
-            "group": client["group"],
-            "comment": client["comment"],
-            "reset": client["reset"],
+            "email": client.get("email", current_email),
+            "subId": client.get("subId", ""),
+            "id": client_id,
+            "password": client.get("password", ""),
+            "auth": client.get("auth", ""),
+            "flow": client.get("flow", ""),
+            "security": client.get("security", "auto"),
+            "limitIp": client.get("limitIp", 0),
+            "totalGB": client.get("totalGB", 0),
+            "expiryTime": client.get("expiryTime", 0),
+            "enable": client.get("enable", client.get("enabled", True)),
+            "tgId": client.get("tgId", 0),
+            "group": client.get("group", ""),
+            "comment": client.get("comment", ""),
+            "reset": client.get("reset", 0),
         }
 
         payload.update(kwargs)
@@ -145,9 +150,17 @@ class XUIClients(XUIInbounds):
             json=payload,
         )
 
-        response.raise_for_status()
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
 
-        data = response.json()
+        if response.is_error:
+            raise Exception(
+                data.get("msg")
+                or response.text
+                or f"3X-UI returned HTTP {response.status_code}"
+            )
 
         if not data.get("success"):
             raise Exception(

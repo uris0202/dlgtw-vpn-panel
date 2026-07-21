@@ -1,17 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import QRCodeCanvas from "../../../components/QRCodeCanvas";
 import api from "../../../lib/api";
+import {
+    CLIENT_ACCOUNT_PATH,
+    clearClientOnboardingToken,
+    clearClientToken,
+    getClientAuthConfig,
+} from "../../../lib/clientAuth";
+import { selectServersForPlan } from "../../../lib/serverSelection";
 
 export default function ClientAccountPage() {
 
     const params = useParams();
+    const router = useRouter();
     const accountToken = Array.isArray(params?.token)
         ? params.token[0]
         : params?.token;
+    const sessionMode = accountToken === "dashboard";
 
     const [settings, setSettings] = useState({});
     const [account, setAccount] = useState(null);
@@ -57,9 +66,13 @@ export default function ClientAccountPage() {
 
         try {
 
-            const response = await api.get(`/public/account/${accountToken}`);
+            const response = await api.get(
+                getAccountEndpoint(accountToken, sessionMode),
+                sessionMode ? getClientAuthConfig() : undefined,
+            );
             const data = response.data || {};
             const loadedPlans = data.plans || [];
+            const loadedServers = data.servers || [];
             const firstPlan = loadedPlans[0];
             const accountServerIds = data.account?.server_ids || [];
 
@@ -68,7 +81,7 @@ export default function ClientAccountPage() {
             setSubscriptions(data.subscriptions || []);
             setOrders(data.orders || []);
             setPlans(loadedPlans);
-            setServers(data.servers || []);
+            setServers(loadedServers);
             setPayment(data.pending_payment || null);
             setCredentialLogin(
                 data.account?.account_login
@@ -76,14 +89,28 @@ export default function ClientAccountPage() {
                 || "",
             );
 
+            if (sessionMode) {
+                clearClientToken();
+            }
+
             if (!selectedPlanId && firstPlan) {
                 setSelectedPlanId(String(firstPlan.id));
                 setSelectedServerIds(
-                    accountServerIds.slice(0, Number(firstPlan.server_limit || 1)),
+                    selectServersForPlan(
+                        accountServerIds,
+                        loadedServers,
+                        firstPlan.server_limit,
+                    ),
                 );
             }
 
         } catch (error) {
+
+            if (error?.response?.status === 401) {
+                clearClientToken();
+                router.replace("/account");
+                return;
+            }
 
             setError(getErrorMessage(error, "Не удалось открыть личный кабинет."));
 
@@ -102,7 +129,7 @@ export default function ClientAccountPage() {
         setSelectedPlanId(planId);
         setSelectedServerIds((current) =>
             plan
-                ? current.slice(0, Number(plan.server_limit || 1))
+                ? selectServersForPlan(current, servers, plan.server_limit)
                 : current
         );
 
@@ -153,11 +180,12 @@ export default function ClientAccountPage() {
         try {
 
             const response = await api.post(
-                `/public/account/${accountToken}/renew`,
+                `${getAccountEndpoint(accountToken, sessionMode)}/renew`,
                 {
                     plan_id: Number(selectedPlan.id),
                     server_ids: selectedServerIds,
                 },
+                sessionMode ? getClientAuthConfig() : undefined,
             );
 
             setPayment(response.data);
@@ -165,6 +193,10 @@ export default function ClientAccountPage() {
             await loadAccount();
 
         } catch (error) {
+
+            if (handleSessionError(error, sessionMode, router)) {
+                return;
+            }
 
             setError(getErrorMessage(error, "Не удалось создать заказ на продление."));
 
@@ -192,21 +224,34 @@ export default function ClientAccountPage() {
         try {
 
             await api.patch(
-                `/public/account/${accountToken}/credentials`,
+                `${getAccountEndpoint(accountToken, sessionMode)}/credentials`,
                 {
                     login: credentialLogin.trim(),
                     password: credentialPassword,
                     current_password: currentPassword,
                 },
+                sessionMode ? getClientAuthConfig() : undefined,
             );
 
+            clearClientToken();
+            clearClientOnboardingToken();
             setCredentialPassword("");
             setCredentialPasswordConfirm("");
             setCurrentPassword("");
             setCredentialMessage("Данные входа сохранены.");
+
+            if (!sessionMode) {
+                router.replace(CLIENT_ACCOUNT_PATH);
+                return;
+            }
+
             await loadAccount();
 
         } catch (error) {
+
+            if (handleSessionError(error, sessionMode, router)) {
+                return;
+            }
 
             setError(getErrorMessage(error, "Не удалось сохранить данные входа."));
 
@@ -231,6 +276,18 @@ export default function ClientAccountPage() {
         }
 
         scrollToSection(accessState.targetId);
+
+    }
+
+    async function logout() {
+
+        try {
+            await api.post("/public/account/logout");
+        } finally {
+            clearClientToken();
+            clearClientOnboardingToken();
+            router.replace("/account");
+        }
 
     }
 
@@ -268,11 +325,23 @@ export default function ClientAccountPage() {
                         </p>
                     </div>
 
-                    {settings.support_contact && (
-                        <div style={supportBox}>
-                            Поддержка: <b>{settings.support_contact}</b>
-                        </div>
-                    )}
+                    <div style={headerControls}>
+                        {settings.support_contact && (
+                            <div style={supportBox}>
+                                Поддержка: <b>{settings.support_contact}</b>
+                            </div>
+                        )}
+
+                        {sessionMode && (
+                            <button
+                                type="button"
+                                onClick={logout}
+                                style={logoutButton}
+                            >
+                                Выйти
+                            </button>
+                        )}
+                    </div>
                 </header>
 
                 {error && (
@@ -821,6 +890,26 @@ function fallbackCopy(value) {
 
 }
 
+function getAccountEndpoint(accountToken, sessionMode) {
+
+    return sessionMode
+        ? "/public/account/session"
+        : `/public/account/${accountToken}`;
+
+}
+
+function handleSessionError(error, sessionMode, router) {
+
+    if (sessionMode && error?.response?.status === 401) {
+        clearClientToken();
+        router.replace("/account");
+        return true;
+    }
+
+    return false;
+
+}
+
 function scrollToSection(sectionId) {
 
     document.getElementById(sectionId)?.scrollIntoView({
@@ -1054,6 +1143,14 @@ const pageHeader = {
     marginBottom: 20,
 };
 
+const headerControls = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+};
+
 const title = {
     margin: "0 0 8px",
 };
@@ -1069,6 +1166,16 @@ const supportBox = {
     borderRadius: 8,
     background: "#fff",
     color: "#374151",
+};
+
+const logoutButton = {
+    padding: "11px 14px",
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    background: "#fff",
+    color: "#111827",
+    cursor: "pointer",
+    fontSize: 14,
 };
 
 const accessBanner = {

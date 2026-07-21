@@ -61,6 +61,12 @@ class Order(Base, TimestampMixin):
         nullable=True,
     )
 
+    account_session_version: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
     server_id: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,

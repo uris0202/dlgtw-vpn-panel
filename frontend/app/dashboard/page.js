@@ -2,10 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+    ArrowRight,
+    CheckCircle2,
+    Clock3,
+    RefreshCw,
+    Search,
+    Server as ServerIcon,
+    ShoppingCart,
+    Users,
+    WifiOff,
+} from "lucide-react";
 
-import Sidebar from "../../components/Sidebar";
-import Header from "../../components/Header";
+import AdminLayout from "../../components/AdminLayout";
+import PageHeading from "../../components/PageHeading";
 import StatCard from "../../components/StatCard";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 
 import { getMe } from "../../lib/auth";
 import api from "../../lib/api";
@@ -166,71 +181,31 @@ export default function Dashboard() {
 
     return (
 
-        <div style={page}>
+        <AdminLayout user={user} onLogout={logout}>
+            <PageHeading
+                title="Панель управления"
+                description="Состояние инфраструктуры, клиентов и заказов"
+                actions={
+                    <>
+                        <Button variant="outline" onClick={() => router.push("/search")}>
+                            <Search />
+                            Найти клиента
+                        </Button>
+                        <Button onClick={refreshDashboard} disabled={refreshing || loading}>
+                            <RefreshCw className={refreshing || loading ? "animate-spin" : ""} />
+                            {refreshing || loading ? "Обновление..." : "Обновить"}
+                        </Button>
+                    </>
+                }
+            />
 
-            <Sidebar />
+            <div className="mb-5 grid gap-3">
+                {loading && <Alert>Загрузка статистики...</Alert>}
+                {pageError && <Alert variant="error">{pageError}</Alert>}
+                {actionNotice && <Alert variant="success">{actionNotice}</Alert>}
+            </div>
 
-            <div style={main}>
-
-                <Header
-                    user={user}
-                    onLogout={logout}
-                />
-
-                <div style={content}>
-
-                    <div style={pageHeader}>
-                        <div>
-                            <h1 style={title}>
-                                Панель управления
-                            </h1>
-
-                            <p style={subtitle}>
-                                Вы вошли как <b>{user?.email || "..."}</b>
-                            </p>
-                        </div>
-
-                        <div style={headerActions}>
-                            <button
-                                onClick={() => router.push("/search")}
-                                style={secondaryButton}
-                            >
-                                Поиск клиентов
-                            </button>
-
-                            <button
-                                onClick={refreshDashboard}
-                                disabled={refreshing || loading}
-                                style={{
-                                    ...primaryButton,
-                                    cursor: refreshing || loading ? "not-allowed" : "pointer",
-                                    opacity: refreshing || loading ? .7 : 1,
-                                }}
-                            >
-                                {refreshing || loading ? "Обновление..." : "Обновить"}
-                            </button>
-                        </div>
-                    </div>
-
-                    {loading && (
-                        <div style={loadingNotice}>
-                            Загрузка статистики...
-                        </div>
-                    )}
-
-                    {pageError && (
-                        <div style={errorBox}>
-                            {pageError}
-                        </div>
-                    )}
-
-                    {actionNotice && (
-                        <div style={successBox}>
-                            {actionNotice}
-                        </div>
-                    )}
-
-                    <div style={statsGrid}>
+            <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                         <StatCard
                             title="Серверов онлайн"
                             value={`${summary.onlineServers}/${summary.totalServers}`}
@@ -272,203 +247,127 @@ export default function Dashboard() {
                             description="Заказы, где доступ не выдался автоматически"
                             tone={orderSummary.activationErrors.length > 0 ? "danger" : "success"}
                         />
-                    </div>
-
-                    <div style={alertGrid}>
-                        <section style={panel}>
-                            <div style={panelHeader}>
-                                <div>
-                                    <h2 style={panelTitle}>
-                                        Заказы требуют внимания
-                                    </h2>
-
-                                    <p style={panelSubtitle}>
-                                        Ручные оплаты и ошибки автоматической выдачи.
-                                    </p>
-                                </div>
-
-                                <button
-                                    onClick={() => router.push("/orders")}
-                                    style={linkButton}
-                                >
-                                    Заказы
-                                </button>
-                            </div>
-
-                            {orderSummary.actionItems.length === 0 ? (
-                                <div style={emptyState}>
-                                    Нет заказов, требующих действий.
-                                </div>
-                            ) : (
-                                <div style={list}>
-                                    {orderSummary.actionItems.slice(0, 8).map((order) => (
-                                        <OrderAlertRow
-                                            key={order.id}
-                                            order={order}
-                                            actionLoading={actionOrderId === order.id}
-                                            onAction={() => processOrder(order)}
-                                            onOpen={() => router.push("/orders")}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-
-                        <section style={panel}>
-                            <div style={panelHeader}>
-                                <div>
-                                    <h2 style={panelTitle}>
-                                        Проблемные серверы
-                                    </h2>
-
-                                    <p style={panelSubtitle}>
-                                        Ошибки подключения к 3X-UI.
-                                    </p>
-                                </div>
-
-                                <button
-                                    onClick={() => router.push("/servers")}
-                                    style={linkButton}
-                                >
-                                    Серверы
-                                </button>
-                            </div>
-
-                            {summary.problemServers.length === 0 ? (
-                                <div style={emptyState}>
-                                    Все серверы доступны.
-                                </div>
-                            ) : (
-                                <div style={list}>
-                                    {summary.problemServers.map((server) => (
-                                        <div
-                                            key={server.id}
-                                            style={dangerRow}
-                                        >
-                                            <div>
-                                                <div style={rowTitle}>
-                                                    {server.name}
-                                                </div>
-
-                                                <div style={rowMeta}>
-                                                    {server.country}
-                                                </div>
-
-                                                <div style={rowError}>
-                                                    {server.error || "Сервер недоступен"}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-
-                        <section style={panel}>
-                            <div style={panelHeader}>
-                                <div>
-                                    <h2 style={panelTitle}>
-                                        Истекающие клиенты
-                                    </h2>
-
-                                    <p style={panelSubtitle}>
-                                        Ближайшие окончания в течение 7 дней.
-                                    </p>
-                                </div>
-                            </div>
-
-                            {summary.expiringClients.length === 0 ? (
-                                <div style={emptyState}>
-                                    Нет клиентов, которые истекают в ближайшие 7 дней.
-                                </div>
-                            ) : (
-                                <div style={list}>
-                                    {summary.expiringClients.slice(0, 8).map((client) => (
-                                        <ClientRow
-                                            key={`${client.server_id}-${client.email}`}
-                                            client={client}
-                                            tone="warning"
-                                            onOpen={openClient}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-                    </div>
-
-                    <section style={panel}>
-                        <div style={panelHeader}>
-                            <div>
-                                <h2 style={panelTitle}>
-                                    Обзор серверов
-                                </h2>
-
-                                <p style={panelSubtitle}>
-                                    Клиенты, трафик и состояние каждого 3X-UI сервера.
-                                </p>
-                            </div>
-
-                            <button
-                                onClick={() => router.push("/servers")}
-                                style={linkButton}
-                            >
-                                Управлять
-                            </button>
-                        </div>
-
-                        {servers.length === 0 ? (
-                            <div style={emptyState}>
-                                Серверы пока не добавлены.
-                            </div>
-                        ) : (
-                            <div style={serverGrid}>
-                                {servers.map((server) => (
-                                    <ServerOverviewCard
-                                        key={server.id}
-                                        server={server}
-                                        onOpenClients={() => router.push(`/clients?server=${server.id}`)}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </section>
-
-                    <section style={panel}>
-                        <div style={panelHeader}>
-                            <div>
-                                <h2 style={panelTitle}>
-                                    Последние клиенты
-                                </h2>
-
-                                <p style={panelSubtitle}>
-                                    Недавно созданные клиенты по всем доступным серверам.
-                                </p>
-                            </div>
-                        </div>
-
-                        {summary.recentClients.length === 0 ? (
-                            <div style={emptyState}>
-                                Пока нет данных о недавно созданных клиентах.
-                            </div>
-                        ) : (
-                            <div style={list}>
-                                {summary.recentClients.slice(0, 10).map((client) => (
-                                    <ClientRow
-                                        key={`${client.server_id}-${client.email}-${client.created}`}
-                                        client={client}
-                                        tone="neutral"
-                                        onOpen={openClient}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </section>
-
-                </div>
-
             </div>
 
-        </div>
+            <div className="mb-6 grid gap-4 xl:grid-cols-2">
+                <DashboardPanel
+                    title="Заказы требуют внимания"
+                    description="Ручные оплаты и ошибки автоматической выдачи"
+                    icon={ShoppingCart}
+                    action={<Button variant="ghost" size="sm" onClick={() => router.push("/orders")}>Заказы <ArrowRight /></Button>}
+                >
+                    {orderSummary.actionItems.length === 0 ? (
+                        <EmptyState icon={CheckCircle2}>Нет заказов, требующих действий.</EmptyState>
+                    ) : (
+                        <div className="divide-y divide-border">
+                            {orderSummary.actionItems.slice(0, 8).map((order) => (
+                                <OrderAlertRow
+                                    key={order.id}
+                                    order={order}
+                                    actionLoading={actionOrderId === order.id}
+                                    onAction={() => processOrder(order)}
+                                    onOpen={() => router.push("/orders")}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </DashboardPanel>
+
+                <DashboardPanel
+                    title="Проблемные серверы"
+                    description="Ошибки подключения к 3X-UI"
+                    icon={WifiOff}
+                    action={<Button variant="ghost" size="sm" onClick={() => router.push("/servers")}>Серверы <ArrowRight /></Button>}
+                >
+                    {summary.problemServers.length === 0 ? (
+                        <EmptyState icon={CheckCircle2}>Все серверы доступны.</EmptyState>
+                    ) : (
+                        <div className="divide-y divide-border">
+                            {summary.problemServers.map((server) => (
+                                <div key={server.id} className="px-5 py-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-sm font-medium">{server.name}</div>
+                                            <div className="mt-0.5 text-xs text-muted-foreground">{server.country}</div>
+                                        </div>
+                                        <Badge variant="destructive">Недоступен</Badge>
+                                    </div>
+                                    <div className="mt-2 text-xs text-[#b42318]">{server.error || "Сервер недоступен"}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </DashboardPanel>
+            </div>
+
+            <DashboardPanel
+                title="Истекающие клиенты"
+                description="Ближайшие окончания в течение 7 дней"
+                icon={Clock3}
+                className="mb-6"
+            >
+                {summary.expiringClients.length === 0 ? (
+                    <EmptyState icon={CheckCircle2}>Нет клиентов, которые истекают в ближайшие 7 дней.</EmptyState>
+                ) : (
+                    <div className="divide-y divide-border">
+                        {summary.expiringClients.slice(0, 8).map((client) => (
+                            <ClientRow
+                                key={`${client.server_id}-${client.email}`}
+                                client={client}
+                                tone="warning"
+                                onOpen={openClient}
+                            />
+                        ))}
+                    </div>
+                )}
+            </DashboardPanel>
+
+            <section className="mb-6">
+                <div className="mb-3 flex items-end justify-between gap-4">
+                    <div>
+                        <h2 className="m-0 text-base font-semibold">Обзор серверов</h2>
+                        <p className="mt-1 mb-0 text-sm text-muted-foreground">Клиенты, трафик и состояние каждого 3X-UI сервера</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => router.push("/servers")}>Управлять <ArrowRight /></Button>
+                </div>
+
+                {servers.length === 0 ? (
+                    <Card><EmptyState icon={ServerIcon}>Серверы пока не добавлены.</EmptyState></Card>
+                ) : (
+                    <div className="grid gap-4 xl:grid-cols-2">
+                        {servers.map((server) => (
+                            <ServerOverviewCard
+                                key={server.id}
+                                server={server}
+                                onOpenClients={() => router.push(`/clients?server=${server.id}`)}
+                            />
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            <DashboardPanel
+                title="Последние клиенты"
+                description="Недавно созданные клиенты по всем доступным серверам"
+                icon={Users}
+            >
+                {summary.recentClients.length === 0 ? (
+                    <EmptyState icon={Users}>Пока нет данных о недавно созданных клиентах.</EmptyState>
+                ) : (
+                    <div className="divide-y divide-border">
+                        {summary.recentClients.slice(0, 10).map((client) => (
+                            <ClientRow
+                                key={`${client.server_id}-${client.email}-${client.created}`}
+                                client={client}
+                                tone="neutral"
+                                onOpen={openClient}
+                            />
+                        ))}
+                    </div>
+                )}
+            </DashboardPanel>
+
+        </AdminLayout>
 
     );
 
@@ -481,33 +380,22 @@ function ClientRow({
 }) {
 
     return (
-        <div style={clientRow}>
-            <div style={clientMain}>
-                <div style={rowTitle}>
-                    {client.email || "Без имени"}
-                </div>
-
-                <div style={rowMeta}>
+        <div className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{client.email || "Без имени"}</div>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
                     {client.server}
                     {client.group ? ` · ${client.group}` : ""}
                 </div>
             </div>
 
-            <div
-                style={{
-                    ...statusBadge,
-                    ...(tone === "warning" ? warningBadge : neutralBadge),
-                }}
-            >
+            <Badge variant={tone === "warning" ? "warning" : "outline"}>
                 {formatDaysLeft(client.days_left)}
-            </div>
+            </Badge>
 
-            <button
-                onClick={() => onOpen(client)}
-                style={smallButton}
-            >
-                Открыть
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => onOpen(client)}>
+                Открыть <ArrowRight />
+            </Button>
         </div>
     );
 
@@ -522,74 +410,54 @@ function ServerOverviewCard({
     const trafficPercent = getTrafficPercent(server);
 
     return (
-        <div style={serverCard}>
-            <div style={serverCardHeader}>
-                <div>
-                    <h3 style={serverTitle}>
-                        {server.name}
-                    </h3>
-
-                    <div style={rowMeta}>
-                        {server.country}
-                    </div>
+        <Card className="min-w-0 overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+                <div className="min-w-0">
+                    <h3 className="m-0 truncate text-base font-semibold">{server.name}</h3>
+                    <div className="mt-1 text-xs text-muted-foreground">{server.country}</div>
                 </div>
 
-                <span
-                    style={{
-                        ...statusBadge,
-                        ...(isOffline ? dangerBadge : successBadge),
-                    }}
-                >
+                <Badge variant={isOffline ? "destructive" : "success"}>
                     {isOffline ? "Недоступен" : "Доступен"}
-                </span>
+                </Badge>
             </div>
 
-            <div style={serverMetrics}>
+            <div className="grid grid-cols-2 border-b border-border sm:grid-cols-4 sm:divide-x sm:divide-border">
                 <Metric label="Клиентов" value={server.clients || 0} />
                 <Metric label="Онлайн" value={server.online || 0} />
                 <Metric label="Активных" value={server.enabled || 0} />
                 <Metric label="Истекают" value={server.expiring_soon || 0} />
             </div>
 
-            <div style={trafficBlock}>
-                <div style={trafficHeader}>
+            <div className="p-5">
+                <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                     <span>Трафик</span>
-                    <b>
-                        {formatBytes(server.traffic_used || 0)}
-                    </b>
+                    <b>{formatBytes(server.traffic_used || 0)}</b>
                 </div>
 
                 {server.traffic_limit > 0 && (
                     <>
-                        <div style={progressTrack}>
+                        <div className="h-2 overflow-hidden rounded-md bg-secondary">
                             <div
-                                style={{
-                                    ...progressFill,
-                                    width: `${trafficPercent}%`,
-                                }}
+                                className="h-full rounded-md bg-primary"
+                                style={{ width: `${trafficPercent}%` }}
                             />
                         </div>
 
-                        <div style={trafficLimit}>
+                        <div className="mt-1.5 text-xs text-muted-foreground">
                             Лимит: {formatBytes(server.traffic_limit)}
                         </div>
                     </>
                 )}
+
+                {server.error && <div className="mt-3 text-xs text-destructive">{server.error}</div>}
+
+                <Button className="mt-4" variant="outline" onClick={onOpenClients}>
+                    <Users />
+                    Клиенты
+                </Button>
             </div>
-
-            {server.error && (
-                <div style={rowError}>
-                    {server.error}
-                </div>
-            )}
-
-            <button
-                onClick={onOpenClients}
-                style={secondaryButton}
-            >
-                Клиенты
-            </button>
-        </div>
+        </Card>
     );
 
 }
@@ -605,62 +473,45 @@ function OrderAlertRow({
     const tone = hasActivationError ? "danger" : "warning";
 
     return (
-        <div style={clientRow}>
-            <div style={clientMain}>
-                <div style={rowTitle}>
-                    {order.client_email || "Клиент"}
-                </div>
-
-                <div style={rowMeta}>
+        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{order.client_email || "Клиент"}</div>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
                     Заказ #{order.id}
                     {order.plan_name ? ` · ${order.plan_name}` : ""}
                     {order.server_names ? ` · ${order.server_names}` : ""}
                 </div>
 
-                <div style={rowMeta}>
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
                     {formatPrice(order.amount, order.currency)}
                     {order.customer_contact ? ` · ${order.customer_contact}` : ""}
                 </div>
 
                 {hasActivationError && (
-                    <div style={rowError}>
-                        {order.activation_error}
-                    </div>
+                    <div className="mt-1.5 text-xs text-destructive">{order.activation_error}</div>
                 )}
             </div>
 
-            <div
-                style={{
-                    ...statusBadge,
-                    ...(tone === "danger" ? dangerBadge : warningBadge),
-                }}
-            >
+            <Badge variant={tone === "danger" ? "destructive" : "warning"}>
                 {hasActivationError ? "Ошибка" : "Оплата"}
-            </div>
+            </Badge>
 
-            <div style={rowActions}>
-                <button
+            <div className="flex flex-wrap items-center gap-2">
+                <Button
+                    size="sm"
                     onClick={onAction}
                     disabled={actionLoading}
-                    style={{
-                        ...actionButton,
-                        cursor: actionLoading ? "not-allowed" : "pointer",
-                        opacity: actionLoading ? .7 : 1,
-                    }}
                 >
                     {actionLoading
                         ? "Обработка..."
                         : hasActivationError
                             ? "Повторить выдачу"
                             : "Подтвердить оплату"}
-                </button>
+                </Button>
 
-                <button
-                    onClick={onOpen}
-                    style={smallButton}
-                >
-                    Открыть
-                </button>
+                <Button variant="ghost" size="sm" onClick={onOpen} title="Открыть заказ" aria-label="Открыть заказ">
+                    <ArrowRight />
+                </Button>
             </div>
         </div>
     );
@@ -673,17 +524,41 @@ function Metric({
 }) {
 
     return (
-        <div style={metricBox}>
-            <div style={metricValue}>
-                {value}
-            </div>
-
-            <div style={metricLabel}>
-                {label}
-            </div>
+        <div className="min-w-0 px-3 py-3 text-center">
+            <div className="text-base font-semibold">{value}</div>
+            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{label}</div>
         </div>
     );
 
+}
+
+function DashboardPanel({ title, description, icon: Icon, action, children, className = "" }) {
+    return (
+        <Card className={`min-w-0 overflow-hidden ${className}`}>
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+                <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                        <Icon className="size-4" />
+                    </div>
+                    <div className="min-w-0">
+                        <h2 className="m-0 text-sm font-semibold">{title}</h2>
+                        <p className="mt-1 mb-0 text-xs text-muted-foreground">{description}</p>
+                    </div>
+                </div>
+                {action}
+            </div>
+            {children}
+        </Card>
+    );
+}
+
+function EmptyState({ icon: Icon, children }) {
+    return (
+        <div className="flex min-h-32 flex-col items-center justify-center px-5 py-8 text-center text-sm text-muted-foreground">
+            <Icon className="mb-2 size-5 text-[#98a2b3]" />
+            {children}
+        </div>
+    );
 }
 
 function buildOrderSummary(orders) {

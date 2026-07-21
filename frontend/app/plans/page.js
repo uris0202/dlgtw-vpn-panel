@@ -332,6 +332,7 @@ function PlanCard({
             <div style={metrics}>
                 <Metric label="Срок" value={`${plan.duration_days} дн.`} />
                 <Metric label="Трафик" value={plan.traffic_gb > 0 ? `${plan.traffic_gb} GB` : "Без лимита"} />
+                <Metric label="Серверов" value={formatServerLimit(plan.server_limit)} />
             </div>
 
             <div style={actions}>
@@ -382,6 +383,18 @@ function formatPrice(price, currency) {
     }
 
     return `${value.toLocaleString("ru-RU")} ${currency || "RUB"}`;
+
+}
+
+function formatServerLimit(value) {
+
+    const count = Number(value || 1);
+
+    if (count === 1) {
+        return "1 сервер";
+    }
+
+    return `${count} сервера`;
 
 }
 
@@ -528,7 +541,7 @@ const description = {
 
 const metrics = {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 10,
 };
 

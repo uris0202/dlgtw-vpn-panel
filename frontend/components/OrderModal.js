@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { selectServersForPlan } from "../lib/serverSelection";
+
 export default function OrderModal({
     open,
     mode = "create",
@@ -53,7 +55,11 @@ export default function OrderModal({
 
         setClientEmail("");
         setCustomerContact("");
-        setSelectedServerIds([]);
+        setSelectedServerIds(
+            firstPlan
+                ? selectServersForPlan([], servers, firstPlan.server_limit)
+                : []
+        );
         setPlanId(firstPlan ? String(firstPlan.id) : "");
         setDurationDays(String(firstPlan?.duration_days ?? 30));
         setTrafficGb(String(firstPlan?.traffic_gb ?? 0));
@@ -63,7 +69,7 @@ export default function OrderModal({
         setNote("");
         setFormError("");
 
-    }, [open, isEdit, order, plans]);
+    }, [open, isEdit, order, plans, servers]);
 
     if (!open) {
         return null;
@@ -90,8 +96,9 @@ export default function OrderModal({
         setAmount(String(plan.price ?? 0));
         setCurrency(plan.currency || "RUB");
         setSelectedServerIds((current) =>
-            limitServerSelection(
+            selectServersForPlan(
                 current,
+                servers,
                 Number(plan.server_limit || 1),
             )
         );
@@ -429,12 +436,6 @@ function formatServerLimit(value) {
     }
 
     return `${count} сервера`;
-
-}
-
-function limitServerSelection(current, limit) {
-
-    return current.slice(0, Math.max(1, limit));
 
 }
 

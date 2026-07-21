@@ -1,74 +1,65 @@
+import {
+    Activity,
+    Clock3,
+    Server,
+    TriangleAlert,
+    Users,
+} from "lucide-react";
+
+import { cn } from "../lib/utils";
+import { Card } from "./ui/card";
+
+const tones = {
+    default: {
+        icon: Users,
+        iconClassName: "bg-[#eff4ff] text-[#155eef]",
+    },
+    success: {
+        icon: Activity,
+        iconClassName: "bg-[#ecfdf3] text-[#067647]",
+    },
+    warning: {
+        icon: Clock3,
+        iconClassName: "bg-[#fffaeb] text-[#b54708]",
+    },
+    danger: {
+        icon: TriangleAlert,
+        iconClassName: "bg-[#fef3f2] text-[#b42318]",
+    },
+    neutral: {
+        icon: Server,
+        iconClassName: "bg-[#f2f4f7] text-[#475467]",
+    },
+};
+
 export default function StatCard({
     title,
     value,
     description = "",
     tone = "default",
+    icon,
 }) {
-
-    const accent = accents[tone] || accents.default;
+    const selectedTone = tones[tone] || tones.default;
+    const Icon = icon || selectedTone.icon;
 
     return (
+        <Card className="min-w-0 p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <div className="text-sm font-medium text-muted-foreground">{title}</div>
+                    <div className="mt-2 text-2xl font-semibold text-foreground">{value}</div>
+                </div>
 
-        <div
-            style={{
-                ...card,
-                borderLeft: `4px solid ${accent}`,
-            }}
-        >
-
-            <div
-                style={titleStyle}
-            >
-                {title}
-            </div>
-
-            <div style={valueStyle}>
-                {value}
+                <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", selectedTone.iconClassName)}>
+                    <Icon className="size-4.5" />
+                </div>
             </div>
 
             {description && (
-                <div style={descriptionStyle}>
+                <div className="mt-3 truncate text-xs text-muted-foreground" title={description}>
                     {description}
                 </div>
             )}
-
-        </div>
-
+        </Card>
     );
-
 }
-
-const accents = {
-    default: "#2563eb",
-    success: "#16a34a",
-    warning: "#d97706",
-    danger: "#dc2626",
-    neutral: "#64748b",
-};
-
-const card = {
-    background: "white",
-    padding: 22,
-    borderRadius: 10,
-    boxShadow: "0 3px 10px rgba(0,0,0,.08)",
-};
-
-const titleStyle = {
-    color: "#6b7280",
-    marginBottom: 8,
-    fontSize: 14,
-};
-
-const valueStyle = {
-    color: "#111827",
-    fontSize: 30,
-    lineHeight: 1,
-    fontWeight: 700,
-};
-
-const descriptionStyle = {
-    marginTop: 10,
-    color: "#6b7280",
-    fontSize: 13,
-    lineHeight: 1.4,
-};

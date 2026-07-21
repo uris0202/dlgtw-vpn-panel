@@ -30,7 +30,12 @@ def get_current_user(
             algorithms=[ALGORITHM],
         )
 
-    except JWTError:
+        if payload.get("token_type") == "client":
+            raise JWTError
+
+        user_id = int(payload["sub"])
+
+    except (JWTError, KeyError, TypeError, ValueError):
 
         raise HTTPException(
             status_code=401,
@@ -39,7 +44,7 @@ def get_current_user(
 
     user = db.get(
         User,
-        int(payload["sub"]),
+        user_id,
     )
 
     if user is None:

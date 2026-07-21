@@ -2,11 +2,21 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+    Plus,
+    RefreshCw,
+    Search as SearchIcon,
+} from "lucide-react";
 
-import Sidebar from "../../components/Sidebar";
-import Header from "../../components/Header";
+import AdminLayout from "../../components/AdminLayout";
 import ClientModal from "../../components/ClientModal";
 import ClientTable from "../../components/ClientTable";
+import PageHeading from "../../components/PageHeading";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Input, Select } from "../../components/ui/input";
 
 import { getMe } from "../../lib/auth";
 import api from "../../lib/api";
@@ -16,8 +26,9 @@ export default function Clients() {
     return (
         <Suspense
             fallback={
-                <div style={{ padding: 40 }}>
-                    Загрузка...
+                <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+                    <RefreshCw className="mr-2 size-4 animate-spin" />
+                    Загрузка клиентов...
                 </div>
             }
         >
@@ -312,9 +323,12 @@ function ClientsContent() {
     if (loading) {
 
         return (
-            <div style={{ padding: 40 }}>
-                Загрузка...
-            </div>
+            <AdminLayout user={user} onLogout={logout}>
+                <div className="flex min-h-64 items-center justify-center text-sm text-muted-foreground">
+                    <RefreshCw className="mr-2 size-4 animate-spin" />
+                    Загрузка клиентов...
+                </div>
+            </AdminLayout>
         );
 
     }
@@ -371,208 +385,103 @@ function ClientsContent() {
         });
 
     return (
-
-        <div
-            style={{
-                display: "flex",
-                minHeight: "100vh",
-                background: "#f5f7fb",
-                fontFamily: "Arial",
-            }}
-        >
-
-            <Sidebar />
-
-            <div style={{ flex: 1 }}>
-
-                <Header
-                    user={user}
-                    onLogout={logout}
-                />
-
-                <div style={{ padding: 30 }}>
-
-                    <div
-                        style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: 20,
-                            marginBottom: 15,
-                        }}
-                    >
-
-                        <div>
-                            <h1 style={{ marginBottom: 8 }}>
-                                Клиенты
-                            </h1>
-
-                            <p style={{ margin: 0 }}>
-                                Всего: <b>{data?.total || 0}</b>
-                                {" | "}
-                                Онлайн: <b>{data?.online || 0}</b>
-                            </p>
-                        </div>
-
-                        <div
-                            style={{
-                                display: "flex",
-                                gap: 10,
-                                alignItems: "center",
-                                flexWrap: "wrap",
-                            }}
+        <AdminLayout user={user} onLogout={logout}>
+            <PageHeading
+                title="Клиенты"
+                description="Управление доступами и подключениями на выбранном сервере"
+                actions={
+                    <>
+                        <Select
+                            value={serverId || ""}
+                            onChange={(event) => router.push(`/clients?server=${event.target.value}`)}
+                            className="w-full sm:w-48"
+                            aria-label="VPN-сервер"
                         >
-                            <select
-                                value={serverId || ""}
-                                onChange={(event) => router.push(
-                                    `/clients?server=${event.target.value}`
-                                )}
-                                style={serverSelect}
-                            >
-                                {serverOptions.map((server) => (
-                                    <option
-                                        key={server.id}
-                                        value={server.id}
-                                    >
-                                        {server.name}
-                                    </option>
-                                ))}
-                            </select>
+                            {serverOptions.map((server) => (
+                                <option key={server.id} value={server.id}>{server.name}</option>
+                            ))}
+                        </Select>
 
-                            <button
-                                onClick={refreshClients}
-                                disabled={refreshing}
-                                style={{
-                                    padding: "10px 18px",
-                                    border: "1px solid #d1d5db",
-                                    borderRadius: 8,
-                                    cursor: refreshing ? "not-allowed" : "pointer",
-                                    background: "#fff",
-                                    color: "#111827",
-                                    fontSize: 14,
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
-                                {refreshing ? "Обновление..." : "Обновить"}
-                            </button>
-
-                            <button
-                                onClick={openCreateModal}
-                                style={{
-                                    padding: "10px 18px",
-                                    border: "none",
-                                    borderRadius: 8,
-                                    cursor: "pointer",
-                                    background: "#2563eb",
-                                    color: "#fff",
-                                    fontSize: 14,
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
-                                Новый клиент
-                            </button>
-                        </div>
-
-                    </div>
-
-                    {pageError && (
-                        <div
-                            style={{
-                                marginBottom: 20,
-                                padding: 12,
-                                borderRadius: 8,
-                                background: "#fee2e2",
-                                color: "#991b1b",
-                                fontSize: 14,
-                            }}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={refreshClients}
+                            disabled={refreshing}
                         >
-                            {pageError}
-                        </div>
-                    )}
+                            <RefreshCw className={refreshing ? "animate-spin" : ""} />
+                            {refreshing ? "Обновление..." : "Обновить"}
+                        </Button>
 
-                    {pageMessage && (
-                        <div
-                            style={{
-                                marginBottom: 20,
-                                padding: 12,
-                                borderRadius: 8,
-                                background: "#ecfdf5",
-                                color: "#047857",
-                                fontSize: 14,
-                                overflowWrap: "anywhere",
-                            }}
-                        >
-                            {pageMessage}
-                        </div>
-                    )}
+                        <Button type="button" onClick={openCreateModal}>
+                            <Plus />
+                            Новый клиент
+                        </Button>
+                    </>
+                }
+            />
 
-                    <div
-                        style={{
-                            display: "grid",
-                            gridTemplateColumns: "minmax(260px, 1fr) 180px 220px",
-                            gap: 12,
-                            alignItems: "center",
-                            marginTop: 5,
-                            marginBottom: 12,
-                        }}
-                    >
-                        <input
-                            type="text"
-                            placeholder="Поиск по клиенту, группе или комментарию..."
+            <div className="mb-5 flex flex-wrap gap-2">
+                <Badge variant="outline">Всего: {data?.total || 0}</Badge>
+                <Badge variant="success">Онлайн: {data?.online || 0}</Badge>
+            </div>
+
+            {pageError && (
+                <Alert variant="error" className="mb-4">{pageError}</Alert>
+            )}
+
+            {pageMessage && (
+                <Alert variant="success" className="mb-4">{pageMessage}</Alert>
+            )}
+
+            <Card className="mb-4 p-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_220px]">
+                    <label className="relative block">
+                        <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            placeholder="Клиент, группа или комментарий"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            style={filterControl}
+                            className="pl-9"
+                            aria-label="Поиск клиентов"
                         />
+                    </label>
 
-                        <select
-                            value={statusFilter}
-                            onChange={(event) => setStatusFilter(event.target.value)}
-                            style={filterControl}
-                        >
-                            <option value="all">Все статусы</option>
-                            <option value="enabled">Активные</option>
-                            <option value="disabled">Отключенные</option>
-                        </select>
-
-                        <select
-                            value={groupFilter}
-                            onChange={(event) => setGroupFilter(event.target.value)}
-                            style={filterControl}
-                        >
-                            <option value="all">Все группы</option>
-                            <option value="none">Без группы</option>
-                            {groupOptions.map((group) => (
-                                <option
-                                    key={group}
-                                    value={group}
-                                >
-                                    {group}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div
-                        style={{
-                            marginBottom: 20,
-                            color: "#6b7280",
-                            fontSize: 14,
-                        }}
+                    <Select
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value)}
+                        aria-label="Статус клиента"
                     >
-                        Показано: <b>{filteredClients.length}</b> из <b>{clients.length}</b>
-                    </div>
+                        <option value="all">Все статусы</option>
+                        <option value="enabled">Активные</option>
+                        <option value="disabled">Отключенные</option>
+                    </Select>
 
-                    <ClientTable
-                        clients={filteredClients}
-                        accountLinkLoadingEmail={accountLinkLoadingEmail}
-                        onEdit={openEditModal}
-                        onDelete={deleteClient}
-                        onCreateAccountAccess={createAccountAccess}
-                    />
-
+                    <Select
+                        value={groupFilter}
+                        onChange={(event) => setGroupFilter(event.target.value)}
+                        aria-label="Группа клиента"
+                    >
+                        <option value="all">Все группы</option>
+                        <option value="none">Без группы</option>
+                        {groupOptions.map((group) => (
+                            <option key={group} value={group}>{group}</option>
+                        ))}
+                    </Select>
                 </div>
 
-            </div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                    Показано {filteredClients.length} из {clients.length}
+                </div>
+            </Card>
+
+            <ClientTable
+                clients={filteredClients}
+                accountLinkLoadingEmail={accountLinkLoadingEmail}
+                onEdit={openEditModal}
+                onDelete={deleteClient}
+                onCreateAccountAccess={createAccountAccess}
+            />
 
             <ClientModal
                 open={modalOpen}
@@ -588,8 +497,7 @@ function ClientsContent() {
                 onClose={closeModal}
                 onSave={saveClient}
             />
-
-        </div>
+        </AdminLayout>
 
     );
 

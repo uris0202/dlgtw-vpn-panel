@@ -26,6 +26,14 @@ class SettingsService:
         values = data.model_dump(
             exclude_unset=True,
         )
+        clear_telegram_token = values.pop(
+            "telegram_bot_token_clear",
+            False,
+        )
+        telegram_bot_token = values.pop(
+            "telegram_bot_token",
+            None,
+        )
 
         for key, value in values.items():
             if value is None:
@@ -37,6 +45,7 @@ class SettingsService:
                 "payment_phone",
                 "payment_recipient",
                 "payment_instructions",
+                "telegram_chat_id",
             }:
                 value = value.strip()
 
@@ -47,6 +56,26 @@ class SettingsService:
                 value = value.strip().strip("/") or "subs"
 
             setattr(settings, key, value)
+
+        if clear_telegram_token:
+            settings.telegram_bot_token = ""
+            settings.telegram_notifications_enabled = False
+        elif telegram_bot_token is not None:
+            normalized_token = telegram_bot_token.strip()
+
+            if normalized_token:
+                if len(normalized_token) < 20 or ":" not in normalized_token:
+                    raise ValueError("Некорректный токен Telegram-бота.")
+
+                settings.telegram_bot_token = normalized_token
+
+        if settings.telegram_notifications_enabled and not (
+            settings.telegram_bot_token
+            and settings.telegram_chat_id
+        ):
+            raise ValueError(
+                "Для включения Telegram укажите токен бота и Chat ID."
+            )
 
         self.db.commit()
         self.db.refresh(settings)

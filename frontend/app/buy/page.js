@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import api from "../../lib/api";
+import { selectServersForPlan } from "../../lib/serverSelection";
 
 const ACCOUNT_TOKEN_STORAGE_KEY = "dlgtw_checkout_account_token";
 const REQUEST_ID_STORAGE_KEY = "dlgtw_checkout_request_id";
@@ -53,15 +54,25 @@ export default function BuyPage() {
             const savedRequestId = getOrCreateRequestId();
             const response = await api.get("/public/checkout");
 
+            const loadedPlans = response.data.plans || [];
+            const loadedServers = response.data.servers || [];
+
             setSettings(response.data.settings || {});
-            setPlans(response.data.plans || []);
-            setServers(response.data.servers || []);
+            setPlans(loadedPlans);
+            setServers(loadedServers);
             setRequestId(savedRequestId);
 
-            const firstPlan = response.data.plans?.[0];
+            const firstPlan = loadedPlans[0];
 
             if (firstPlan) {
                 setSelectedPlanId(String(firstPlan.id));
+                setSelectedServerIds(
+                    selectServersForPlan(
+                        [],
+                        loadedServers,
+                        firstPlan.server_limit,
+                    )
+                );
             }
 
             if (savedAccountToken) {
@@ -124,7 +135,7 @@ export default function BuyPage() {
         setSelectedPlanId(planId);
         setSelectedServerIds((current) =>
             plan
-                ? current.slice(0, Number(plan.server_limit || 1))
+                ? selectServersForPlan(current, servers, plan.server_limit)
                 : current
         );
 

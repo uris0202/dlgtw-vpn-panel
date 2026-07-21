@@ -8,12 +8,19 @@ from app.core.config import settings
 ALGORITHM = "HS256"
 
 
-def create_access_token(data: dict):
+def create_access_token(
+    data: dict,
+    expires_minutes: int | None = None,
+):
 
     payload = data.copy()
 
     payload["exp"] = datetime.utcnow() + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        minutes=(
+            expires_minutes
+            if expires_minutes is not None
+            else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
     )
 
     return jwt.encode(

@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+    Save,
+    UserPlus,
+    X,
+} from "lucide-react";
+
+import { selectServersForPlan } from "../lib/serverSelection";
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Input, Select } from "./ui/input";
 
 export default function ClientModal({
     open,
@@ -147,10 +157,9 @@ export default function ClientModal({
         setDays(String(plan.duration_days ?? defaultSettings.default_client_days ?? 30));
         setTotalGB(String(plan.traffic_gb ?? defaultSettings.default_traffic_gb ?? 0));
         setSelectedServerIds((current) =>
-            limitServerSelection(
+            selectServersForPlan(
                 current,
                 serverOptions,
-                currentServerId,
                 Number(plan.server_limit || 1),
             )
         );
@@ -158,276 +167,142 @@ export default function ClientModal({
     }
 
     return (
-
-        <div
-            style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0,0,0,.45)",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                zIndex: 1000,
-                padding: 20,
-            }}
-        >
-
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4">
             <form
                 onSubmit={handleSubmit}
-                style={{
-                    width: "100%",
-                    maxWidth: 460,
-                    background: "#fff",
-                    borderRadius: 12,
-                    padding: 25,
-                    boxShadow: "0 10px 35px rgba(0,0,0,.25)",
-                }}
+                className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-card shadow-2xl"
             >
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#eff4ff] text-primary">
+                            <UserPlus className="size-4" />
+                        </div>
+                        <div>
+                            <h2 className="m-0 text-base font-semibold">{isEdit ? "Редактирование клиента" : "Новый клиент"}</h2>
+                            <p className="mt-1 mb-0 text-xs text-muted-foreground">Параметры доступа к VPN и срок действия</p>
+                        </div>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" onClick={onClose} disabled={saving} title="Закрыть" aria-label="Закрыть"><X /></Button>
+                </div>
 
-                <h2 style={{ marginTop: 0, marginBottom: 20 }}>
-                    {isEdit ? "Редактирование клиента" : "Новый клиент"}
-                </h2>
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                    <Field label="Имя клиента / псевдоним" className="sm:col-span-2">
+                        <Input type="text" value={email} onChange={(event) => setEmail(event.target.value)} disabled={saving} required autoComplete="off" placeholder="Например: testing" />
+                    </Field>
 
-                <label style={label}>Имя клиента / псевдоним</label>
+                    {!isEdit && (
+                        <>
+                            {planOptions.length > 0 && (
+                                <Field label="Тариф" className="sm:col-span-2">
+                                    <Select value={selectedPlanId} onChange={(event) => selectPlan(event.target.value)} disabled={saving}>
+                                        <option value="">Без тарифа</option>
+                                        {planOptions.map((plan) => (
+                                            <option key={plan.id} value={plan.id}>
+                                                {plan.name} · {formatServerLimit(plan.server_limit)} · {plan.duration_days} дн. · {plan.traffic_gb > 0 ? `${plan.traffic_gb} GB` : "без лимита"} · {formatPlanPrice(plan)}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+                            )}
 
-                <input
-                    type="text"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    disabled={saving}
-                    required
-                    autoComplete="off"
-                    placeholder="Например: testing"
-                    style={input}
-                />
-
-                {!isEdit && (
-                    <>
-                        {planOptions.length > 0 && (
-                            <>
-                                <label style={label}>Тариф</label>
-
-                                <select
-                                    value={selectedPlanId}
-                                    onChange={(event) => selectPlan(event.target.value)}
-                                    disabled={saving}
-                                    style={input}
-                                >
-                                    <option value="">Без тарифа</option>
-                                    {planOptions.map((plan) => (
-                                        <option
-                                            key={plan.id}
-                                            value={plan.id}
-                                        >
-                                            {plan.name} · {formatServerLimit(plan.server_limit)} · {plan.duration_days} дн. · {plan.traffic_gb > 0 ? `${plan.traffic_gb} GB` : "без лимита"} · {formatPlanPrice(plan)}
-                                        </option>
+                            <Field label="VPN-серверы" className="sm:col-span-2">
+                                <div className="grid gap-2 rounded-md border border-border bg-[#f8f9fb] p-3 sm:grid-cols-2">
+                                    {serverOptions.map((server) => (
+                                        <CheckRow key={server.id} disabled={saving || isServerDisabled(Number(server.id), selectedServerIds, selectedPlanServerLimit)}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedServerIds.includes(Number(server.id))}
+                                                onChange={() => toggleServer(server.id)}
+                                                disabled={saving || isServerDisabled(Number(server.id), selectedServerIds, selectedPlanServerLimit)}
+                                                className="size-4 accent-[#155eef]"
+                                            />
+                                            {server.name}
+                                        </CheckRow>
                                     ))}
-                                </select>
-                            </>
-                        )}
+                                </div>
+                                {selectedPlanServerLimit && <span className="text-xs font-normal text-muted-foreground">По тарифу доступно серверов: {selectedPlanServerLimit}.</span>}
+                            </Field>
 
-                        <label style={label}>VPN-серверы</label>
-
-                        <div style={groupBox}>
-
-                            {serverOptions.map((server) => (
-                                <label
-                                    key={server.id}
-                                    style={checkboxRow}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedServerIds.includes(Number(server.id))}
-                                        onChange={() => toggleServer(server.id)}
-                                        disabled={saving || isServerDisabled(
-                                            Number(server.id),
-                                            selectedServerIds,
-                                            selectedPlanServerLimit,
-                                        )}
-                                    />
-
-                                    {server.name}
-                                </label>
-                            ))}
-
-                        </div>
-
-                        {selectedPlanServerLimit && (
-                            <div style={fieldHint}>
-                                По выбранному тарифу можно выбрать серверов: {selectedPlanServerLimit}.
-                            </div>
-                        )}
-
-                        <label style={label}>Inbound ID в 3X-UI</label>
-
-                        <input
-                            type="number"
-                            min="1"
-                            value={inboundId}
-                            onChange={(event) => setInboundId(event.target.value)}
-                            disabled={saving}
-                            required
-                            placeholder={String(defaultSettings.default_inbound_id ?? 1)}
-                            style={input}
-                        />
-
-                        <div style={fieldHint}>
-                            Обычно это 1, если на выбранном 3X-UI сервере один VLESS inbound.
-                        </div>
-                    </>
-                )}
-
-                <label style={label}>Группа</label>
-
-                <div style={groupBox}>
-
-                    <label style={checkboxRow}>
-                        <input
-                            type="checkbox"
-                            checked={group === ""}
-                            onChange={(event) => {
-                                if (event.target.checked) {
-                                    setGroup("");
-                                }
-                            }}
-                            disabled={saving}
-                        />
-
-                        Без группы
-                    </label>
-
-                    {groupChoices.length === 0 && (
-                        <div style={emptyGroups}>
-                            Существующих групп пока нет.
-                        </div>
+                            <Field label="Inbound ID в 3X-UI" className="sm:col-span-2">
+                                <Input type="number" min="1" value={inboundId} onChange={(event) => setInboundId(event.target.value)} disabled={saving} required placeholder={String(defaultSettings.default_inbound_id ?? 1)} />
+                                <span className="text-xs font-normal text-muted-foreground">Обычно 1, если на сервере один VLESS inbound.</span>
+                            </Field>
+                        </>
                     )}
 
-                    {groupChoices.map((option) => (
-                        <label
-                            key={option}
-                            style={checkboxRow}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={group === option}
-                                onChange={(event) => {
-                                    setGroup(event.target.checked ? option : "");
-                                }}
-                                disabled={saving}
-                            />
+                    <Field label="Группа" className="sm:col-span-2">
+                        <div className="grid gap-2 rounded-md border border-border bg-[#f8f9fb] p-3 sm:grid-cols-2">
+                            <CheckRow>
+                                <input
+                                    type="checkbox"
+                                    checked={group === ""}
+                                    onChange={(event) => event.target.checked && setGroup("")}
+                                    disabled={saving}
+                                    className="size-4 accent-[#155eef]"
+                                />
+                                Без группы
+                            </CheckRow>
+                            {groupChoices.length === 0 && <div className="text-xs font-normal text-muted-foreground">Существующих групп пока нет.</div>}
+                            {groupChoices.map((option) => (
+                                <CheckRow key={option}>
+                                    <input
+                                        type="checkbox"
+                                        checked={group === option}
+                                        onChange={(event) => setGroup(event.target.checked ? option : "")}
+                                        disabled={saving}
+                                        className="size-4 accent-[#155eef]"
+                                    />
+                                    {option}
+                                </CheckRow>
+                            ))}
+                        </div>
+                    </Field>
 
-                            {option}
-                        </label>
-                    ))}
+                    <Field label="Комментарий" className="sm:col-span-2">
+                        <Input value={comment} onChange={(event) => setComment(event.target.value)} disabled={saving} />
+                    </Field>
+                    <Field label={isEdit ? "Продлить на дней" : "Срок действия, дней"}>
+                        <Input type="number" min="0" value={days} onChange={(event) => setDays(event.target.value)} disabled={saving} placeholder={isEdit ? "Не менять" : String(defaultSettings.default_client_days ?? 30)} />
+                    </Field>
+                    <Field label="Лимит трафика, GB">
+                        <Input type="number" min="0" value={totalGB} onChange={(event) => setTotalGB(event.target.value)} disabled={saving} placeholder={isEdit ? "Не менять" : String(defaultSettings.default_traffic_gb ?? 0)} />
+                    </Field>
 
+                    {isEdit && (
+                        <CheckRow className="sm:col-span-2">
+                            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} disabled={saving} className="size-4 accent-[#155eef]" />
+                            Клиент включён
+                        </CheckRow>
+                    )}
+
+                    {error && <Alert variant="error" className="sm:col-span-2">{error}</Alert>}
                 </div>
 
-                <label style={label}>Комментарий</label>
-
-                <input
-                    value={comment}
-                    onChange={(event) => setComment(event.target.value)}
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>
-                    {isEdit ? "Продлить на дней" : "Срок действия, дней"}
-                </label>
-
-                <input
-                    type="number"
-                    min="0"
-                    value={days}
-                    onChange={(event) => setDays(event.target.value)}
-                    disabled={saving}
-                    placeholder={isEdit ? "Не менять" : String(defaultSettings.default_client_days ?? 30)}
-                    style={input}
-                />
-
-                <label style={label}>Лимит трафика, GB</label>
-
-                <input
-                    type="number"
-                    min="0"
-                    value={totalGB}
-                    onChange={(event) => setTotalGB(event.target.value)}
-                    disabled={saving}
-                    placeholder={isEdit ? "Не менять" : String(defaultSettings.default_traffic_gb ?? 0)}
-                    style={input}
-                />
-
-                {isEdit && (
-                    <label
-                        style={{
-                            display: "flex",
-                            gap: 10,
-                            marginTop: 15,
-                            alignItems: "center",
-                        }}
-                    >
-
-                        <input
-                            type="checkbox"
-                            checked={enabled}
-                            onChange={(event) => setEnabled(event.target.checked)}
-                            disabled={saving}
-                        />
-
-                        Включен
-
-                    </label>
-                )}
-
-                {error && (
-                    <div
-                        style={{
-                            marginTop: 18,
-                            padding: 12,
-                            borderRadius: 8,
-                            background: "#fee2e2",
-                            color: "#991b1b",
-                            fontSize: 14,
-                        }}
-                    >
-                        {error}
-                    </div>
-                )}
-
-                <div
-                    style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        gap: 10,
-                        marginTop: 25,
-                    }}
-                >
-
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        disabled={saving}
-                        style={secondaryButton}
-                    >
-                        Отмена
-                    </button>
-
-                    <button
-                        type="submit"
-                        disabled={saving}
-                        style={primaryButton}
-                    >
-                        {saving ? "Сохранение..." : "Сохранить"}
-                    </button>
-
+                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
+                    <Button type="submit" disabled={saving}><Save />{saving ? "Сохранение..." : "Сохранить"}</Button>
                 </div>
-
             </form>
-
         </div>
-
     );
 
+}
+
+function Field({ label, className = "", children }) {
+    return (
+        <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
+            <span>{label}</span>
+            {children}
+        </label>
+    );
+}
+
+function CheckRow({ className = "", disabled = false, children }) {
+    return (
+        <label className={`flex min-h-8 items-center gap-2 text-sm font-normal ${disabled ? "text-muted-foreground" : ""} ${className}`}>
+            {children}
+        </label>
+    );
 }
 
 function getDefaultServerIds(serverOptions, currentServerId) {
@@ -463,15 +338,6 @@ function formatServerLimit(value) {
     }
 
     return `${count} сервера`;
-
-}
-
-function limitServerSelection(current, serverOptions, currentServerId, limit) {
-
-    const fallback = getDefaultServerIds(serverOptions, currentServerId);
-    const selected = current.length > 0 ? current : fallback;
-
-    return selected.slice(0, Math.max(1, limit));
 
 }
 

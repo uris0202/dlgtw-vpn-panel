@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+    Save,
+    Server,
+    X,
+} from "lucide-react";
+
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 export default function ServerModal({
     open,
@@ -11,9 +20,7 @@ export default function ServerModal({
     onClose,
     onSave,
 }) {
-
     const isEdit = mode === "edit";
-
     const [name, setName] = useState("");
     const [country, setCountry] = useState("");
     const [host, setHost] = useState("");
@@ -23,7 +30,6 @@ export default function ServerModal({
     const [enabled, setEnabled] = useState(true);
 
     useEffect(() => {
-
         if (!open) {
             return;
         }
@@ -46,7 +52,6 @@ export default function ServerModal({
         setUsername("");
         setPassword("");
         setEnabled(true);
-
     }, [open, isEdit, server]);
 
     if (!open) {
@@ -54,7 +59,6 @@ export default function ServerModal({
     }
 
     function submit(event) {
-
         event.preventDefault();
 
         const payload = {
@@ -74,195 +78,83 @@ export default function ServerModal({
         }
 
         onSave(payload);
-
     }
 
     return (
-        <div style={overlay}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4">
             <form
                 onSubmit={submit}
-                style={modal}
+                className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-card shadow-2xl"
             >
-                <h2 style={{ marginTop: 0, marginBottom: 20 }}>
-                    {isEdit ? "Редактирование сервера" : "Новый сервер"}
-                </h2>
-
-                <label style={label}>Название</label>
-                <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    required
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>Страна</label>
-                <input
-                    value={country}
-                    onChange={(event) => setCountry(event.target.value)}
-                    required
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>3X-UI URL</label>
-                <input
-                    type="url"
-                    value={host}
-                    onChange={(event) => setHost(event.target.value)}
-                    placeholder="https://1.2.3.4:10000"
-                    required
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>Base path</label>
-                <input
-                    value={basePath}
-                    onChange={(event) => setBasePath(event.target.value)}
-                    placeholder="Например: webtlsroot"
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>Логин 3X-UI</label>
-                <input
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder={isEdit ? "Оставить текущий логин" : ""}
-                    required={!isEdit}
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>
-                    {isEdit ? "Новый пароль 3X-UI" : "Пароль 3X-UI"}
-                </label>
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder={isEdit ? "Оставить текущий пароль" : ""}
-                    required={!isEdit}
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={checkboxRow}>
-                    <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(event) => setEnabled(event.target.checked)}
-                        disabled={saving}
-                    />
-                    Активен
-                </label>
-
-                {error && (
-                    <div style={errorBox}>
-                        {error}
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#eff4ff] text-primary">
+                            <Server className="size-4" />
+                        </div>
+                        <div>
+                            <h2 className="m-0 text-base font-semibold">
+                                {isEdit ? "Редактирование сервера" : "Новый сервер"}
+                            </h2>
+                            <p className="mt-1 mb-0 text-xs text-muted-foreground">Подключение и учётные данные 3X-UI</p>
+                        </div>
                     </div>
-                )}
 
-                <div style={actions}>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        disabled={saving}
-                        style={secondaryButton}
-                    >
-                        Отмена
-                    </button>
+                    <Button type="button" variant="ghost" size="icon" onClick={onClose} disabled={saving} title="Закрыть" aria-label="Закрыть">
+                        <X />
+                    </Button>
+                </div>
 
-                    <button
-                        type="submit"
-                        disabled={saving}
-                        style={primaryButton}
-                    >
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                    <Field label="Название">
+                        <Input value={name} onChange={(event) => setName(event.target.value)} required disabled={saving} />
+                    </Field>
+                    <Field label="Страна">
+                        <Input value={country} onChange={(event) => setCountry(event.target.value)} required disabled={saving} />
+                    </Field>
+                    <Field label="3X-UI URL" className="sm:col-span-2">
+                        <Input type="url" value={host} onChange={(event) => setHost(event.target.value)} placeholder="https://1.2.3.4:10000" required disabled={saving} />
+                    </Field>
+                    <Field label="Base path" className="sm:col-span-2">
+                        <Input value={basePath} onChange={(event) => setBasePath(event.target.value)} placeholder="Например: webtlsroot" disabled={saving} />
+                    </Field>
+                    <Field label="Логин 3X-UI">
+                        <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={isEdit ? "Оставить текущий" : ""} required={!isEdit} disabled={saving} />
+                    </Field>
+                    <Field label={isEdit ? "Новый пароль 3X-UI" : "Пароль 3X-UI"}>
+                        <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={isEdit ? "Оставить текущий" : ""} required={!isEdit} disabled={saving} />
+                    </Field>
+
+                    <label className="flex min-h-10 items-center gap-2 text-sm sm:col-span-2">
+                        <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(event) => setEnabled(event.target.checked)}
+                            disabled={saving}
+                            className="size-4 accent-[#155eef]"
+                        />
+                        Сервер активен
+                    </label>
+
+                    {error && <Alert variant="error" className="sm:col-span-2">{error}</Alert>}
+                </div>
+
+                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
+                    <Button type="submit" disabled={saving}>
+                        <Save />
                         {saving ? "Сохранение..." : "Сохранить"}
-                    </button>
+                    </Button>
                 </div>
             </form>
         </div>
     );
-
 }
 
-const overlay = {
-    position: "fixed",
-    inset: 0,
-    zIndex: 1000,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    background: "rgba(0,0,0,.45)",
-};
-
-const modal = {
-    width: "100%",
-    maxWidth: 500,
-    padding: 25,
-    borderRadius: 12,
-    background: "#fff",
-    boxShadow: "0 10px 35px rgba(0,0,0,.25)",
-};
-
-const label = {
-    display: "block",
-    marginBottom: 5,
-    fontSize: 14,
-    fontWeight: 600,
-};
-
-const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    marginBottom: 15,
-    padding: 10,
-    border: "1px solid #ccc",
-    borderRadius: 6,
-    fontSize: 14,
-};
-
-const checkboxRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 5,
-    fontSize: 14,
-};
-
-const errorBox = {
-    marginTop: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};
-
-const actions = {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 25,
-};
-
-const primaryButton = {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: 6,
-    background: "#2563eb",
-    color: "#fff",
-    cursor: "pointer",
-};
-
-const secondaryButton = {
-    padding: "10px 16px",
-    border: "1px solid #d1d5db",
-    borderRadius: 6,
-    background: "#fff",
-    color: "#111827",
-    cursor: "pointer",
-};
+function Field({ label, className = "", children }) {
+    return (
+        <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
+            <span>{label}</span>
+            {children}
+        </label>
+    );
+}

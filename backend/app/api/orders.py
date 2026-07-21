@@ -1,6 +1,7 @@
 from app.auth.dependencies import get_current_user
 from app.models.user import User
 from fastapi import APIRouter
+from fastapi import BackgroundTasks
 from fastapi import Depends
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from app.schemas.order import OrderResponse
 from app.schemas.order import OrderUpdate
 from app.services.client_service import ClientService
 from app.services.order_service import OrderService
+from app.services.settings_service import SettingsService
+from app.services.telegram_service import TelegramNotificationService
 
 
 router = APIRouter(
@@ -104,7 +107,15 @@ def create_account_access(
         if all(server_id in order_server_ids for server_id in server_ids):
             return order
 
-    return service.create(
+    account_order = next(
+        (
+            order
+            for order in existing_orders
+            if order.account_token == account_token
+        ),
+        None,
+    )
+    order = service.create(
         OrderCreate(
             client_email=client_email,
             customer_contact=payload.customer_contact,
@@ -120,6 +131,11 @@ def create_account_access(
         )
     )
 
+    if account_order is not None:
+        service.inherit_account_credentials(order, account_order)
+
+    return order
+
 
 @router.patch(
     "/{order_id}",
@@ -128,6 +144,7 @@ def create_account_access(
 def update_order(
     order_id: int,
     payload: OrderUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -143,7 +160,16 @@ def update_order(
 
     validate_order_plan(payload, order)
 
-    return service.update(order, payload)
+    updated_order = service.update(order, payload)
+
+    if payload.status == "paid":
+        TelegramNotificationService.queue_activation_result(
+            background_tasks,
+            SettingsService(db).get(),
+            updated_order,
+        )
+
+    return updated_order
 
 
 @router.delete("/{order_id}")

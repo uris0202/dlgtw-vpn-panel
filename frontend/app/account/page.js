@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import api from "../../lib/api";
+import {
+    CLIENT_ACCOUNT_PATH,
+    clearClientOnboardingToken,
+    clearClientToken,
+    getClientAuthConfig,
+} from "../../lib/clientAuth";
 
 export default function AccountLoginPage() {
 
@@ -13,6 +19,39 @@ export default function AccountLoginPage() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [checkingSession, setCheckingSession] = useState(true);
+
+    useEffect(() => {
+        let active = true;
+
+        async function checkSession() {
+
+            try {
+                await api.get(
+                    "/public/account/session",
+                    getClientAuthConfig(),
+                );
+
+                if (active) {
+                    clearClientToken();
+                    router.replace(CLIENT_ACCOUNT_PATH);
+                }
+            } catch {
+                if (active) {
+                    clearClientToken();
+                    setCheckingSession(false);
+                }
+            }
+
+        }
+
+        checkSession();
+
+        return () => {
+            active = false;
+        };
+
+    }, [router]);
 
     async function submit(event) {
 
@@ -22,7 +61,7 @@ export default function AccountLoginPage() {
 
         try {
 
-            const response = await api.post(
+            await api.post(
                 "/public/account/login",
                 {
                     login: login.trim(),
@@ -30,7 +69,9 @@ export default function AccountLoginPage() {
                 },
             );
 
-            router.push(`/account/${response.data.account_token}`);
+            clearClientToken();
+            clearClientOnboardingToken();
+            router.replace(CLIENT_ACCOUNT_PATH);
 
         } catch (error) {
 
@@ -42,6 +83,16 @@ export default function AccountLoginPage() {
 
         }
 
+    }
+
+    if (checkingSession) {
+        return (
+            <main style={page}>
+                <div style={sessionCheck}>
+                    Проверка сессии...
+                </div>
+            </main>
+        );
     }
 
     return (
@@ -160,6 +211,11 @@ const form = {
     borderRadius: 10,
     background: "#fff",
     boxShadow: "0 8px 25px rgba(0,0,0,.08)",
+};
+
+const sessionCheck = {
+    color: "#6b7280",
+    fontFamily: "Arial",
 };
 
 const title = {

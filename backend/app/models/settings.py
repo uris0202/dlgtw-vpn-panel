@@ -1,3 +1,4 @@
+from sqlalchemy import Boolean
 from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import Text
@@ -76,3 +77,25 @@ class PanelSettings(Base, TimestampMixin):
         default="",
         nullable=False,
     )
+
+    telegram_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    telegram_bot_token: Mapped[str] = mapped_column(
+        String(255),
+        default="",
+        nullable=False,
+    )
+
+    telegram_chat_id: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+        nullable=False,
+    )
+
+    @property
+    def telegram_bot_token_configured(self):
+        return bool(self.telegram_bot_token)

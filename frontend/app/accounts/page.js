@@ -143,8 +143,8 @@ export default function AccountsPage() {
                 getAuthConfig(),
             );
 
-            replaceAccount(response.data);
-            showMessage("Логин и пароль сброшены. Клиент сможет задать новые данные по персональной ссылке.");
+            replaceAccount(account.account_token, response.data);
+            showMessage("Логин и пароль сброшены. Старая ссылка и клиентские сессии отозваны — скопируйте клиенту новую ссылку.");
 
         } catch (error) {
 
@@ -210,10 +210,10 @@ export default function AccountsPage() {
 
     }
 
-    function replaceAccount(updatedAccount) {
+    function replaceAccount(originalAccountToken, updatedAccount) {
 
         setAccounts((current) => current.map((account) =>
-            account.account_token === updatedAccount.account_token
+            account.account_token === originalAccountToken
                 ? {
                     ...account,
                     ...updatedAccount,

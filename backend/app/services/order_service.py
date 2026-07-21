@@ -143,11 +143,20 @@ class OrderService:
 
         now = datetime.now(timezone.utc)
         password_hash = hash_password(new_password)
+        account_orders = self.get_all_by_account_token(order.account_token)
+        session_version = max(
+            (
+                account_order.account_session_version
+                for account_order in account_orders
+            ),
+            default=0,
+        ) + 1
 
-        for account_order in self.get_all_by_account_token(order.account_token):
+        for account_order in account_orders:
             account_order.account_login = login
             account_order.account_password_hash = password_hash
             account_order.account_password_changed_at = now
+            account_order.account_session_version = session_version
 
         self.db.commit()
         self.db.refresh(order)
@@ -156,15 +165,36 @@ class OrderService:
 
     def reset_account_credentials(self, account_token: str):
         orders = self.get_all_by_account_token(account_token)
+        new_account_token = self._generate_account_token()
+        session_version = max(
+            (
+                order.account_session_version
+                for order in orders
+            ),
+            default=0,
+        ) + 1
 
         for order in orders:
+            order.account_token = new_account_token
             order.account_login = ""
             order.account_password_hash = ""
             order.account_password_changed_at = None
+            order.account_session_version = session_version
 
         self.db.commit()
 
         return orders
+
+    def inherit_account_credentials(self, order: Order, account: Order):
+        order.account_login = account.account_login
+        order.account_password_hash = account.account_password_hash
+        order.account_password_changed_at = account.account_password_changed_at
+        order.account_session_version = account.account_session_version
+
+        self.db.commit()
+        self.db.refresh(order)
+
+        return order
 
     def create(self, data):
         values = self._normalize_values(

@@ -2,10 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+    Pencil,
+    Plus,
+    RefreshCw,
+    Server as ServerIcon,
+    Trash2,
+    Users,
+    Wifi,
+    WifiOff,
+} from "lucide-react";
 
-import Sidebar from "../../components/Sidebar";
-import Header from "../../components/Header";
+import AdminLayout from "../../components/AdminLayout";
+import PageHeading from "../../components/PageHeading";
 import ServerModal from "../../components/ServerModal";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 
 import { getMe } from "../../lib/auth";
 import api from "../../lib/api";
@@ -192,169 +206,130 @@ export default function Servers() {
 
     if (loading) {
         return (
-            <div
-                style={{
-                    padding: 40,
-                    fontFamily: "Arial",
-                }}
-            >
-                Загрузка...
-            </div>
+            <AdminLayout user={user} onLogout={logout}>
+                <div className="flex min-h-64 items-center justify-center text-sm text-muted-foreground">
+                    <RefreshCw className="mr-2 size-4 animate-spin" />
+                    Загрузка серверов...
+                </div>
+            </AdminLayout>
         );
     }
 
     return (
+        <AdminLayout user={user} onLogout={logout}>
+            <PageHeading
+                title="Серверы"
+                description={`${servers.length} серверов подключено к панели`}
+                actions={
+                    <>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={refreshServers}
+                            disabled={refreshing}
+                        >
+                            <RefreshCw className={refreshing ? "animate-spin" : ""} />
+                            {refreshing ? "Обновление..." : "Обновить"}
+                        </Button>
 
-        <div
-            style={{
-                display: "flex",
-                minHeight: "100vh",
-                background: "#f5f7fb",
-                fontFamily: "Arial",
-            }}
-        >
+                        <Button type="button" onClick={openCreateModal}>
+                            <Plus />
+                            Новый сервер
+                        </Button>
+                    </>
+                }
+            />
 
-            <Sidebar />
+            {pageError && (
+                <Alert variant="error" className="mb-5">{pageError}</Alert>
+            )}
 
-            <div style={{ flex: 1 }}>
-
-                <Header
-                    user={user}
-                    onLogout={logout}
-                />
-
-                <div style={{ padding: 30 }}>
-
-                    <div style={pageHeader}>
-                        <div>
-                            <h1 style={{ marginBottom: 8 }}>
-                                Серверы
-                            </h1>
-
-                            <p style={{ margin: 0, color: "#6b7280" }}>
-                                Управление VPN-серверами 3X-UI.
-                            </p>
-                        </div>
-
-                        <div style={headerActions}>
-                            <button
-                                onClick={refreshServers}
-                                disabled={refreshing}
-                                style={secondaryButton}
-                            >
-                                {refreshing ? "Обновление..." : "Обновить"}
-                            </button>
-
-                            <button
-                                onClick={openCreateModal}
-                                style={primaryButton}
-                            >
-                                Новый сервер
-                            </button>
-                        </div>
+            {servers.length === 0 ? (
+                <Card className="flex min-h-56 flex-col items-center justify-center p-6 text-center">
+                    <div className="mb-3 flex size-10 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                        <ServerIcon className="size-5" />
                     </div>
+                    <div className="text-sm font-semibold">Серверы пока не добавлены</div>
+                    <div className="mt-1 text-sm text-muted-foreground">Добавьте первый 3X-UI сервер для управления клиентами.</div>
+                    <Button className="mt-4" onClick={openCreateModal}>
+                        <Plus />
+                        Добавить сервер
+                    </Button>
+                </Card>
+            ) : (
+                <div className="grid gap-4 xl:grid-cols-2">
+                    {servers.map((server) => {
+                        const offline = server.status === "offline";
 
-                    {pageError && (
-                        <div style={errorBox}>
-                            {pageError}
-                        </div>
-                    )}
-
-                    {servers.length === 0 && (
-                        <div style={emptyBox}>
-                            Серверы пока не добавлены.
-                        </div>
-                    )}
-
-                    <div style={grid}>
-                        {servers.map((server) => (
-
-                            <div
-                                key={server.id}
-                                style={card}
-                            >
-                                <div style={cardHeader}>
-                                    <div>
-                                        <h2 style={{ margin: "0 0 8px" }}>
-                                            {server.name}
-                                        </h2>
-
-                                        <div style={muted}>
-                                            {server.country}
+                        return (
+                            <Card key={server.id} className="min-w-0 overflow-hidden">
+                                <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+                                    <div className="flex min-w-0 items-start gap-3">
+                                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#eff4ff] text-primary">
+                                            <ServerIcon className="size-5" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h2 className="m-0 truncate text-base font-semibold">{server.name}</h2>
+                                            <p className="mt-1 mb-0 truncate text-sm text-muted-foreground">{server.country || "Страна не указана"}</p>
                                         </div>
                                     </div>
 
-                                    <span
-                                        style={{
-                                            ...badge,
-                                            background: server.enabled ? "#dcfce7" : "#fee2e2",
-                                            color: server.enabled ? "#166534" : "#991b1b",
-                                        }}
-                                    >
-                                        {server.enabled ? "Активен" : "Отключен"}
-                                    </span>
+                                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                                        <Badge variant={server.enabled ? "success" : "destructive"}>
+                                            {server.enabled ? "Активен" : "Отключен"}
+                                        </Badge>
+                                        <Badge variant={offline ? "destructive" : "outline"}>
+                                            {offline ? <WifiOff /> : <Wifi />}
+                                            {offline ? "3X-UI недоступен" : "3X-UI доступен"}
+                                        </Badge>
+                                    </div>
                                 </div>
 
-                                <div style={details}>
-                                    <div>
-                                        Host: <b>{server.host}</b>
+                                <div className="grid gap-3 border-b border-border px-5 py-4 text-sm sm:grid-cols-2">
+                                    <div className="min-w-0">
+                                        <div className="text-xs text-muted-foreground">Host</div>
+                                        <div className="mt-1 truncate font-medium" title={server.host}>{server.host}</div>
                                     </div>
-
-                                    <div>
-                                        Base path: <b>{server.base_path || "-"}</b>
+                                    <div className="min-w-0">
+                                        <div className="text-xs text-muted-foreground">Base path</div>
+                                        <div className="mt-1 truncate font-medium" title={server.base_path || "-"}>{server.base_path || "-"}</div>
                                     </div>
-
-                                    <div>
-                                        Статус 3X-UI:{" "}
-                                        <b>
-                                            {server.status === "offline" ? "Недоступен" : "Доступен"}
-                                        </b>
-                                    </div>
-
-                                    {server.error && (
-                                        <div style={serverError}>
-                                            {server.error}
-                                        </div>
-                                    )}
                                 </div>
 
-                                <div style={statsGrid}>
+                                {server.error && (
+                                    <Alert variant="error" className="mx-5 mt-4">{server.error}</Alert>
+                                )}
+
+                                <div className="grid grid-cols-2 border-b border-border sm:grid-cols-4 sm:divide-x sm:divide-border">
                                     <Stat label="Клиентов" value={server.clients ?? 0} />
                                     <Stat label="Онлайн" value={server.online ?? 0} />
                                     <Stat label="Активных" value={server.enabled_clients ?? 0} />
                                     <Stat label="Отключено" value={server.disabled_clients ?? 0} />
                                 </div>
 
-                                <div style={cardActions}>
-                                    <button
-                                        onClick={() => router.push(`/clients?server=${server.id}`)}
-                                        style={primaryButton}
-                                    >
-                                        Открыть клиентов
-                                    </button>
-
-                                    <button
-                                        onClick={() => openEditModal(server)}
-                                        style={secondaryButton}
-                                    >
-                                        Редактировать
-                                    </button>
-
-                                    <button
+                                <div className="flex flex-wrap items-center gap-2 p-4 sm:p-5">
+                                    <Button onClick={() => router.push(`/clients?server=${server.id}`)}>
+                                        <Users />
+                                        Клиенты
+                                    </Button>
+                                    <Button variant="outline" onClick={() => openEditModal(server)}>
+                                        <Pencil />
+                                        Изменить
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
                                         onClick={() => deleteServer(server)}
-                                        style={dangerButton}
+                                        className="ml-auto text-destructive hover:bg-[#fef3f2] hover:text-destructive"
                                     >
+                                        <Trash2 />
                                         Удалить
-                                    </button>
+                                    </Button>
                                 </div>
-                            </div>
-
-                        ))}
-                    </div>
-
+                            </Card>
+                        );
+                    })}
                 </div>
-
-            </div>
+            )}
 
             <ServerModal
                 open={modalOpen}
@@ -365,8 +340,7 @@ export default function Servers() {
                 onClose={closeModal}
                 onSave={saveServer}
             />
-
-        </div>
+        </AdminLayout>
 
     );
 
@@ -377,14 +351,9 @@ function Stat({
     value,
 }) {
     return (
-        <div style={statBox}>
-            <div style={statValue}>
-                {value}
-            </div>
-
-            <div style={statLabel}>
-                {label}
-            </div>
+        <div className="min-w-0 px-4 py-3 text-center sm:py-4">
+            <div className="text-lg font-semibold text-foreground">{value}</div>
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">{label}</div>
         </div>
     );
 }

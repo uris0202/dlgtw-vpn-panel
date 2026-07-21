@@ -2,8 +2,11 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 from fastapi import APIRouter
+from fastapi import BackgroundTasks
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Request
+from fastapi import Response
 from pydantic import BaseModel
 from pydantic import Field
 from sqlalchemy.exc import IntegrityError
@@ -11,12 +14,17 @@ from sqlalchemy.orm import Session
 import time
 
 from app.db.deps import get_db
+from app.auth.account import clear_account_session_cookie
+from app.auth.account import get_current_account
+from app.auth.account import set_account_session_cookie
 from app.schemas.order import OrderCreate
 from app.services.client_service import ClientService
 from app.services.order_service import OrderService
 from app.services.plan_service import PlanService
+from app.services.rate_limit import RateLimiter
 from app.services.server_service import ServerService
 from app.services.settings_service import SettingsService
+from app.services.telegram_service import TelegramNotificationService
 from app.services.vless_service import attach_client_links
 from app.services.xui_service import XUIService
 
@@ -24,6 +32,15 @@ from app.services.xui_service import XUIService
 router = APIRouter(
     prefix="/public",
     tags=["Public"],
+)
+
+account_login_limiter = RateLimiter(
+    limit=12,
+    window_seconds=600,
+)
+public_order_limiter = RateLimiter(
+    limit=20,
+    window_seconds=3600,
 )
 
 
@@ -70,6 +87,8 @@ def get_checkout_data(
 @router.post("/orders")
 def create_public_order(
     payload: PublicOrderCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
 
@@ -79,6 +98,12 @@ def create_public_order(
 
     if existing_order is not None:
         return build_payment_response(db, existing_order)
+
+    if not public_order_limiter.allow(get_client_ip(request)):
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много заявок. Попробуйте позже.",
+        )
 
     client_email = payload.client_email.strip()
     customer_contact = payload.customer_contact.strip()
@@ -95,6 +120,8 @@ def create_public_order(
         payload.server_ids,
     )
 
+    created = False
+
     try:
         order = service.create(
             OrderCreate(
@@ -107,6 +134,7 @@ def create_public_order(
                 note="Публичная заявка с сайта покупки.",
             )
         )
+        created = True
     except IntegrityError:
         db.rollback()
         order = service.get_by_public_request_id(request_id)
@@ -114,14 +142,31 @@ def create_public_order(
         if order is None:
             raise
 
+    if created:
+        TelegramNotificationService.queue_new_order(
+            background_tasks,
+            SettingsService(db).get(),
+            order,
+        )
+
     return build_payment_response(db, order)
 
 
 @router.post("/account/login")
 def login_public_account(
     payload: PublicAccountLogin,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
+
+    rate_limit_key = get_client_ip(request)
+
+    if not account_login_limiter.allow(rate_limit_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много попыток входа. Попробуйте через 10 минут.",
+        )
 
     order = OrderService(db).login_to_account(
         payload.login,
@@ -134,9 +179,62 @@ def login_public_account(
             detail="Неверный логин или пароль.",
         )
 
+    account_login_limiter.reset(rate_limit_key)
+    set_account_session_cookie(response, order)
+
     return {
-        "account_token": order.account_token,
+        "success": True,
     }
+
+
+@router.post("/account/logout")
+def logout_public_account(response: Response):
+    clear_account_session_cookie(response)
+
+    return {
+        "success": True,
+    }
+
+
+@router.get("/account/session")
+def get_session_account(
+    response: Response,
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    set_account_session_cookie(response, account)
+
+    return build_account_response(db, account)
+
+
+@router.patch("/account/session/credentials")
+def update_session_account_credentials(
+    payload: PublicAccountCredentials,
+    response: Response,
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    return update_account_credentials_response(
+        db,
+        account,
+        payload,
+        response,
+    )
+
+
+@router.post("/account/session/renew")
+def create_session_renew_order(
+    payload: PublicRenewOrderCreate,
+    background_tasks: BackgroundTasks,
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    return create_renew_order_response(
+        db,
+        account,
+        payload,
+        background_tasks,
+    )
 
 
 @router.get("/account/{account_token}")
@@ -154,6 +252,67 @@ def get_public_account(
             detail="Личный кабинет не найден.",
         )
 
+    ensure_activation_access(anchor_order)
+
+    return build_account_response(db, anchor_order)
+
+
+@router.patch("/account/{account_token}/credentials")
+def update_public_account_credentials(
+    account_token: str,
+    payload: PublicAccountCredentials,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+
+    service = OrderService(db)
+    anchor_order = service.get_by_account_token(account_token)
+
+    if anchor_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Личный кабинет не найден.",
+        )
+
+    ensure_activation_access(anchor_order)
+
+    return update_account_credentials_response(
+        db,
+        anchor_order,
+        payload,
+        response,
+    )
+
+
+@router.post("/account/{account_token}/renew")
+def create_public_renew_order(
+    account_token: str,
+    payload: PublicRenewOrderCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+
+    service = OrderService(db)
+    anchor_order = service.get_by_account_token(account_token)
+
+    if anchor_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Личный кабинет не найден.",
+        )
+
+    ensure_activation_access(anchor_order)
+
+    return create_renew_order_response(
+        db,
+        anchor_order,
+        payload,
+        background_tasks,
+    )
+
+
+def build_account_response(db, anchor_order):
+    service = OrderService(db)
     orders = service.get_all_by_account_token(anchor_order.account_token)
     pending_order = next(
         (
@@ -184,21 +343,13 @@ def get_public_account(
     }
 
 
-@router.patch("/account/{account_token}/credentials")
-def update_public_account_credentials(
-    account_token: str,
-    payload: PublicAccountCredentials,
-    db: Session = Depends(get_db),
+def update_account_credentials_response(
+    db,
+    anchor_order,
+    payload,
+    response,
 ):
-
     service = OrderService(db)
-    anchor_order = service.get_by_account_token(account_token)
-
-    if anchor_order is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Личный кабинет не найден.",
-        )
 
     try:
         service.update_account_credentials(
@@ -213,6 +364,8 @@ def update_public_account_credentials(
             detail=str(error),
         )
 
+    set_account_session_cookie(response, anchor_order)
+
     return {
         "success": True,
         "account_login": anchor_order.account_login,
@@ -220,41 +373,59 @@ def update_public_account_credentials(
     }
 
 
-@router.post("/account/{account_token}/renew")
-def create_public_renew_order(
-    account_token: str,
-    payload: PublicRenewOrderCreate,
-    db: Session = Depends(get_db),
+def create_renew_order_response(
+    db,
+    anchor_order,
+    payload,
+    background_tasks,
 ):
-
-    service = OrderService(db)
-    anchor_order = service.get_by_account_token(account_token)
-
-    if anchor_order is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Личный кабинет не найден.",
-        )
-
     plan, server_ids = validate_order_choice(
         db,
         payload.plan_id,
         payload.server_ids,
     )
-
+    service = OrderService(db)
     order = service.create(
         OrderCreate(
             client_email=anchor_order.client_email,
             customer_contact=anchor_order.customer_contact,
             account_token=anchor_order.account_token,
+            account_login=anchor_order.account_login,
             plan_id=plan.id,
             server_ids=server_ids,
             status="pending",
             note=f"Продление из личного кабинета. Кабинет заказа #{anchor_order.id}.",
         )
     )
+    service.inherit_account_credentials(order, anchor_order)
+    TelegramNotificationService.queue_new_order(
+        background_tasks,
+        SettingsService(db).get(),
+        order,
+        title="Запрос на продление",
+    )
 
     return build_payment_response(db, order)
+
+
+def ensure_activation_access(anchor_order):
+    if anchor_order.account_password_hash:
+        raise HTTPException(
+            status_code=401,
+            detail="Ссылка активации уже использована. Войдите по логину и паролю.",
+        )
+
+
+def get_client_ip(request):
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()[:64]
+
+    if request.client:
+        return request.client.host[:64]
+
+    return "unknown"
 
 
 def validate_order_choice(db, plan_id, raw_server_ids):
