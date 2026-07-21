@@ -1,20 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2, LockKeyhole, ShoppingCart, UserRound } from "lucide-react";
 
+import AuthShell from "../../components/AuthShell";
+import { Alert } from "../../components/ui/alert";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import api from "../../lib/api";
-import {
-    CLIENT_ACCOUNT_PATH,
-    clearClientOnboardingToken,
-    clearClientToken,
-    getClientAuthConfig,
-} from "../../lib/clientAuth";
+import { CLIENT_ACCOUNT_PATH, clearClientOnboardingToken, clearClientToken, getClientAuthConfig } from "../../lib/clientAuth";
 
 export default function AccountLoginPage() {
-
     const router = useRouter();
-
     const [login, setLogin] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -23,15 +22,9 @@ export default function AccountLoginPage() {
 
     useEffect(() => {
         let active = true;
-
         async function checkSession() {
-
             try {
-                await api.get(
-                    "/public/account/session",
-                    getClientAuthConfig(),
-                );
-
+                await api.get("/public/account/session", getClientAuthConfig());
                 if (active) {
                     clearClientToken();
                     router.replace(CLIENT_ACCOUNT_PATH);
@@ -42,247 +35,62 @@ export default function AccountLoginPage() {
                     setCheckingSession(false);
                 }
             }
-
         }
-
         checkSession();
-
-        return () => {
-            active = false;
-        };
-
+        return () => { active = false; };
     }, [router]);
 
     async function submit(event) {
-
         event.preventDefault();
         setError("");
         setLoading(true);
-
         try {
-
-            await api.post(
-                "/public/account/login",
-                {
-                    login: login.trim(),
-                    password,
-                },
-            );
-
+            await api.post("/public/account/login", { login: login.trim(), password });
             clearClientToken();
             clearClientOnboardingToken();
             router.replace(CLIENT_ACCOUNT_PATH);
-
         } catch (error) {
-
             setError(getErrorMessage(error, "Не удалось войти в личный кабинет."));
-
         } finally {
-
             setLoading(false);
-
         }
-
     }
 
     if (checkingSession) {
-        return (
-            <main style={page}>
-                <div style={sessionCheck}>
-                    Проверка сессии...
-                </div>
-            </main>
-        );
+        return <AuthShell title="Личный кабинет" description="Проверяем активную сессию"><div className="flex items-center justify-center py-8 text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Проверка сессии...</div></AuthShell>;
     }
 
     return (
-        <main style={page}>
-            <form
-                onSubmit={submit}
-                style={form}
-            >
-                <h1 style={title}>
-                    Вход клиента
-                </h1>
-
-                <p style={subtitle}>
-                    Вход для клиентов DLGTW VPN
-                </p>
-
-                <label style={field}>
-                    <span style={label}>
-                        Логин
-                    </span>
-
-                    <input
-                        value={login}
-                        onChange={(event) => setLogin(event.target.value)}
-                        required
-                        autoComplete="username"
-                        style={input}
-                    />
-                </label>
-
-                <label style={field}>
-                    <span style={label}>
-                        Пароль
-                    </span>
-
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                        autoComplete="current-password"
-                        style={input}
-                    />
-                </label>
-
-                {error && (
-                    <div style={errorBox}>
-                        {error}
-                    </div>
-                )}
-
-                <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                        ...primaryButton,
-                        opacity: loading ? .7 : 1,
-                        cursor: loading ? "not-allowed" : "pointer",
-                    }}
-                >
+        <AuthShell
+            title="Вход клиента"
+            description="Подписки, QR-коды, заказы и продление доступа"
+            footer={<Link href="/login" className="block text-center text-sm text-muted-foreground hover:text-foreground">Вход администратора</Link>}
+        >
+            <form onSubmit={submit} className="grid gap-4">
+                <Field label="Логин" icon={UserRound}>
+                    <Input value={login} onChange={(event) => setLogin(event.target.value)} autoComplete="username" className="pl-9" required autoFocus />
+                </Field>
+                <Field label="Пароль" icon={LockKeyhole}>
+                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="pl-9" required />
+                </Field>
+                {error && <Alert variant="error">{error}</Alert>}
+                <Button type="submit" size="lg" disabled={loading} className="w-full">
+                    {loading && <Loader2 className="animate-spin" />}
                     {loading ? "Вход..." : "Войти"}
-                </button>
-
-                <a
-                    href="/buy"
-                    style={secondaryLink}
-                >
-                    Купить VPN
-                </a>
-
-                <a
-                    href="/login"
-                    style={adminLink}
-                >
-                    Вход администратора
-                </a>
+                </Button>
             </form>
-        </main>
+            <Button asChild variant="outline" className="mt-3 w-full"><Link href="/buy"><ShoppingCart />Купить VPN</Link></Button>
+        </AuthShell>
     );
+}
 
+function Field({ label, icon: Icon, children }) {
+    return <label className="grid gap-1.5"><span className="text-sm font-medium">{label}</span><span className="relative"><Icon className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-muted-foreground" />{children}</span></label>;
 }
 
 function getErrorMessage(error, fallback) {
-
     const detail = error?.response?.data?.detail;
-
-    if (typeof detail === "string") {
-        return detail;
-    }
-
-    if (Array.isArray(detail)) {
-        return detail
-            .map((item) => item?.msg)
-            .filter(Boolean)
-            .join(". ");
-    }
-
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");
     return error?.message || fallback;
-
 }
-
-const page = {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    background: "#f5f7fb",
-    fontFamily: "Arial",
-};
-
-const form = {
-    width: "100%",
-    maxWidth: 420,
-    padding: 32,
-    borderRadius: 10,
-    background: "#fff",
-    boxShadow: "0 8px 25px rgba(0,0,0,.08)",
-};
-
-const sessionCheck = {
-    color: "#6b7280",
-    fontFamily: "Arial",
-};
-
-const title = {
-    margin: "0 0 8px",
-};
-
-const subtitle = {
-    margin: "0 0 22px",
-    color: "#6b7280",
-};
-
-const field = {
-    display: "grid",
-    gap: 6,
-    marginBottom: 14,
-};
-
-const label = {
-    color: "#374151",
-    fontSize: 14,
-    fontWeight: 700,
-};
-
-const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: 12,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    fontSize: 15,
-};
-
-const primaryButton = {
-    width: "100%",
-    padding: 13,
-    border: "none",
-    borderRadius: 8,
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 16,
-};
-
-const secondaryLink = {
-    display: "block",
-    marginTop: 14,
-    color: "#2563eb",
-    textAlign: "center",
-    textDecoration: "none",
-    fontWeight: 700,
-};
-
-const adminLink = {
-    display: "block",
-    marginTop: 12,
-    color: "#6b7280",
-    textAlign: "center",
-    textDecoration: "none",
-    fontSize: 14,
-};
-
-const errorBox = {
-    marginBottom: 14,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};

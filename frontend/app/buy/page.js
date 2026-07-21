@@ -1,7 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+    Check,
+    Copy,
+    CreditCard,
+    ExternalLink,
+    Loader2,
+    Server as ServerIcon,
+    ShoppingCart,
+    UserRound,
+} from "lucide-react";
 
+import PublicHeader from "../../components/PublicHeader";
+import { Alert } from "../../components/ui/alert";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 import api from "../../lib/api";
 import { selectServersForPlan } from "../../lib/serverSelection";
 
@@ -9,7 +25,6 @@ const ACCOUNT_TOKEN_STORAGE_KEY = "dlgtw_checkout_account_token";
 const REQUEST_ID_STORAGE_KEY = "dlgtw_checkout_request_id";
 
 export default function BuyPage() {
-
     const [settings, setSettings] = useState(null);
     const [plans, setPlans] = useState([]);
     const [servers, setServers] = useState([]);
@@ -26,1015 +41,315 @@ export default function BuyPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    useEffect(() => {
+    useEffect(() => { loadCheckout(); }, []);
 
-        loadCheckout();
-
-    }, []);
-
-    const selectedPlan = useMemo(
-        () => plans.find((plan) => String(plan.id) === String(selectedPlanId)),
-        [plans, selectedPlanId],
-    );
-
-    const selectedServerNames = useMemo(
-        () => servers
-            .filter((server) => selectedServerIds.includes(Number(server.id)))
-            .map((server) => server.name),
-        [servers, selectedServerIds],
-    );
+    const selectedPlan = useMemo(() => plans.find((plan) => String(plan.id) === String(selectedPlanId)), [plans, selectedPlanId]);
+    const selectedServerNames = useMemo(() => servers.filter((server) => selectedServerIds.includes(Number(server.id))).map((server) => server.name), [servers, selectedServerIds]);
 
     async function loadCheckout() {
-
         setError("");
-
         try {
-
             const savedAccountToken = localStorage.getItem(ACCOUNT_TOKEN_STORAGE_KEY) || "";
             const savedRequestId = getOrCreateRequestId();
             const response = await api.get("/public/checkout");
-
             const loadedPlans = response.data.plans || [];
             const loadedServers = response.data.servers || [];
-
             setSettings(response.data.settings || {});
             setPlans(loadedPlans);
             setServers(loadedServers);
             setRequestId(savedRequestId);
-
             const firstPlan = loadedPlans[0];
-
             if (firstPlan) {
                 setSelectedPlanId(String(firstPlan.id));
-                setSelectedServerIds(
-                    selectServersForPlan(
-                        [],
-                        loadedServers,
-                        firstPlan.server_limit,
-                    )
-                );
+                setSelectedServerIds(selectServersForPlan([], loadedServers, firstPlan.server_limit));
             }
-
             if (savedAccountToken) {
                 setAccountRestoring(true);
                 restoreStoredAccount(savedAccountToken);
             }
-
         } catch (error) {
-
             setError(getErrorMessage(error, "Не удалось загрузить тарифы."));
-
         } finally {
-
             setLoading(false);
-
         }
-
     }
 
     async function restoreStoredAccount(savedAccountToken) {
-
         try {
-
             const response = await api.get(`/public/account/${savedAccountToken}`);
             const restoredAccountToken = response.data?.account?.account_token;
-
             if (!restoredAccountToken) {
                 localStorage.removeItem(ACCOUNT_TOKEN_STORAGE_KEY);
                 return;
             }
-
             setExistingAccountToken(restoredAccountToken);
-
             if (response.data.pending_payment) {
                 setOrder(response.data.pending_payment);
                 return;
             }
-
             const nextRequestId = createRequestId();
-
             localStorage.setItem(REQUEST_ID_STORAGE_KEY, nextRequestId);
             setRequestId(nextRequestId);
-
         } catch {
-
             localStorage.removeItem(ACCOUNT_TOKEN_STORAGE_KEY);
-
         } finally {
-
             setAccountRestoring(false);
-
         }
-
     }
 
     function selectPlan(planId) {
-
         const plan = plans.find((item) => String(item.id) === String(planId));
-
-        setSelectedPlanId(planId);
-        setSelectedServerIds((current) =>
-            plan
-                ? selectServersForPlan(current, servers, plan.server_limit)
-                : current
-        );
-
+        setSelectedPlanId(String(planId));
+        setSelectedServerIds((current) => plan ? selectServersForPlan(current, servers, plan.server_limit) : current);
     }
 
     function toggleServer(serverId) {
-
         const normalizedServerId = Number(serverId);
         const limit = Number(selectedPlan?.server_limit || 1);
-
         setSelectedServerIds((current) => {
-
-            if (current.includes(normalizedServerId)) {
-                return current.filter((item) => item !== normalizedServerId);
-            }
-
-            if (current.length >= limit) {
-                if (limit === 1) {
-                    return [normalizedServerId];
-                }
-
-                return current;
-            }
-
+            if (current.includes(normalizedServerId)) return current.filter((item) => item !== normalizedServerId);
+            if (current.length >= limit) return limit === 1 ? [normalizedServerId] : current;
             return [...current, normalizedServerId];
-
         });
-
     }
 
     async function submitOrder(event) {
-
         event.preventDefault();
-
-        if (accountRestoring) {
-            return;
-        }
-
+        if (accountRestoring) return;
         if (!selectedPlan) {
             setError("Выберите тариф.");
             return;
         }
-
         if (selectedServerIds.length !== Number(selectedPlan.server_limit || 1)) {
             setError(`По выбранному тарифу нужно выбрать серверов: ${selectedPlan.server_limit}.`);
             return;
         }
-
         setSaving(true);
         setError("");
-
         try {
-
-            const response = await api.post(
-                "/public/orders",
-                {
-                    client_email: clientEmail.trim(),
-                    customer_contact: customerContact.trim(),
-                    request_id: requestId || getOrCreateRequestId(),
-                    plan_id: Number(selectedPlan.id),
-                    server_ids: selectedServerIds,
-                },
-            );
-
+            const response = await api.post("/public/orders", {
+                client_email: clientEmail.trim(),
+                customer_contact: customerContact.trim(),
+                request_id: requestId || getOrCreateRequestId(),
+                plan_id: Number(selectedPlan.id),
+                server_ids: selectedServerIds,
+            });
             setOrder(response.data);
-
             if (response.data.account_token) {
-                localStorage.setItem(
-                    ACCOUNT_TOKEN_STORAGE_KEY,
-                    response.data.account_token,
-                );
+                localStorage.setItem(ACCOUNT_TOKEN_STORAGE_KEY, response.data.account_token);
                 setExistingAccountToken(response.data.account_token);
             }
-
         } catch (error) {
-
             setError(getErrorMessage(error, "Не удалось создать заказ."));
-
         } finally {
-
             setSaving(false);
-
         }
-
     }
 
     async function copyPaymentValue(value, field) {
-
-        if (!value) {
-            return;
-        }
-
-        try {
-            await navigator.clipboard.writeText(String(value));
-        } catch {
-            fallbackCopy(String(value));
-        }
-
+        if (!value) return;
+        try { await navigator.clipboard.writeText(String(value)); } catch { fallbackCopy(String(value)); }
         setCopyStatus(field);
-
-        window.setTimeout(() => {
-            setCopyStatus("");
-        }, 1800);
-
+        window.setTimeout(() => setCopyStatus(""), 1800);
     }
 
     if (loading) {
-        return (
-            <div style={loadingBox}>
-                Загрузка...
-            </div>
-        );
+        return <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Загрузка тарифов...</div>;
     }
 
     if (order) {
         return (
-            <main style={page}>
-                <section style={content}>
-                    <h1 style={title}>
-                        Заказ #{order.id}
-                    </h1>
-
-                    <p style={subtitle}>
-                        Переведите оплату по номеру телефона. После подтверждения платежа доступ будет выдан автоматически.
-                    </p>
-
-                    <div style={summary}>
-                        <Detail label="Тариф" value={order.plan_name} />
-                        <Detail label="Серверы" value={order.server_names} />
-                        <Detail label="Сумма" value={formatPrice(order.amount, order.currency)} />
-                        <Detail label="Комментарий к платежу" value={order.payment_comment} />
-                        {order.account_token && (
-                            <Detail
-                                label="Личный кабинет"
-                                value={(
-                                    <a
-                                        href={buildAccountUrl(order.account_token)}
-                                        style={link}
-                                    >
-                                        Открыть кабинет
-                                    </a>
-                                )}
-                            />
-                        )}
+            <div className="min-h-screen bg-background">
+                <PublicHeader panelName={settings?.panel_name || "DLGTW VPN"} />
+                <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:py-10">
+                    <div className="mb-6 flex items-start gap-3">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#ecfdf3] text-[#067647]"><Check className="size-5" /></div>
+                        <div><h1 className="m-0 text-2xl font-semibold">Заказ #{order.id} создан</h1><p className="mt-1.5 mb-0 text-sm text-muted-foreground">Переведите указанную сумму. После подтверждения платежа доступ будет выдан автоматически.</p></div>
                     </div>
 
-                    <section style={paymentBox}>
-                        <h2 style={sectionTitle}>
-                            Оплата переводом
-                        </h2>
-
-                        <div style={paymentValues}>
-                            <PaymentValue
-                                label="Номер телефона"
-                                value={order.payment_phone || "не указан"}
-                                copied={copyStatus === "phone"}
-                                onCopy={order.payment_phone
-                                    ? () => copyPaymentValue(order.payment_phone, "phone")
-                                    : null}
-                            />
-
-                            <PaymentValue
-                                label="Сумма перевода"
-                                value={formatPrice(order.amount, order.currency)}
-                                copied={copyStatus === "amount"}
-                                onCopy={() => copyPaymentValue(order.amount, "amount")}
-                            />
-
-                            <PaymentValue
-                                label="Комментарий"
-                                value={order.payment_comment}
-                                copied={copyStatus === "comment"}
-                                onCopy={() => copyPaymentValue(order.payment_comment, "comment")}
-                            />
-                        </div>
-
-                        {order.payment_recipient && (
-                            <div style={paymentLine}>
-                                Получатель: <b>{order.payment_recipient}</b>
+                    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                        <Card className="overflow-hidden">
+                            <div className="border-b border-border px-5 py-4"><h2 className="m-0 text-base font-semibold">Оплата переводом</h2><p className="mt-1 mb-0 text-sm text-muted-foreground">Используйте точный комментарий, чтобы мы нашли платёж.</p></div>
+                            <div className="grid gap-3 p-5">
+                                <PaymentValue label="Номер телефона" value={order.payment_phone || "не указан"} copied={copyStatus === "phone"} onCopy={order.payment_phone ? () => copyPaymentValue(order.payment_phone, "phone") : null} />
+                                <PaymentValue label="Сумма перевода" value={formatPrice(order.amount, order.currency)} copied={copyStatus === "amount"} onCopy={() => copyPaymentValue(order.amount, "amount")} />
+                                <PaymentValue label="Комментарий" value={order.payment_comment} copied={copyStatus === "comment"} onCopy={() => copyPaymentValue(order.payment_comment, "comment")} />
+                                {order.payment_recipient && <div className="text-sm text-muted-foreground">Получатель: <span className="font-medium text-foreground">{order.payment_recipient}</span></div>}
+                                {order.payment_instructions && <Alert>{order.payment_instructions}</Alert>}
+                                {order.support_contact && <div className="text-sm text-muted-foreground">Поддержка: <span className="font-medium text-foreground">{order.support_contact}</span></div>}
                             </div>
-                        )}
+                        </Card>
 
-                        {order.payment_instructions && (
-                            <p style={instructions}>
-                                {order.payment_instructions}
-                            </p>
-                        )}
-
-                        {order.support_contact && (
-                            <div style={paymentLine}>
-                                Поддержка: <b>{order.support_contact}</b>
-                            </div>
-                        )}
-                    </section>
-
-                    {order.account_token && (
-                        <section style={accountNotice}>
-                            <div>
-                                <b>Личный кабинет уже создан.</b>
-
-                                <div style={accountNoticeText}>
-                                    В кабинете можно отслеживать оплату, получить VPN-ссылки и задать логин с паролем.
+                        <div className="grid content-start gap-4">
+                            <Card className="p-5">
+                                <h2 className="m-0 text-base font-semibold">Ваш заказ</h2>
+                                <div className="mt-4 grid gap-3">
+                                    <Detail label="Тариф" value={order.plan_name} />
+                                    <Detail label="Серверы" value={order.server_names} />
+                                    <Detail label="Сумма" value={formatPrice(order.amount, order.currency)} />
                                 </div>
-                            </div>
-
-                            <a
-                                href={buildAccountUrl(order.account_token)}
-                                style={primaryLink}
-                            >
-                                Открыть личный кабинет
-                            </a>
-                        </section>
-                    )}
-                </section>
-            </main>
+                            </Card>
+                            {order.account_token && (
+                                <Card className="p-5">
+                                    <div className="flex items-center gap-2 font-semibold"><UserRound className="size-4 text-primary" />Личный кабинет</div>
+                                    <p className="mt-2 mb-4 text-sm leading-5 text-muted-foreground">Отслеживайте оплату, получите VPN-ссылки и задайте постоянный логин.</p>
+                                    <Button asChild className="w-full"><Link href={buildAccountUrl(order.account_token)}>Открыть кабинет <ExternalLink /></Link></Button>
+                                </Card>
+                            )}
+                        </div>
+                    </div>
+                </main>
+            </div>
         );
     }
 
+    const submitDisabled = saving || accountRestoring || plans.length === 0;
+
     return (
-        <main style={page}>
-            <section style={content}>
-                <h1 style={title}>
-                    {settings?.panel_name || "DLGTW VPN"}
-                </h1>
+        <div className="min-h-screen bg-background">
+            <PublicHeader panelName={settings?.panel_name || "DLGTW VPN"} />
+            <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-9">
+                <div className="mb-6"><h1 className="m-0 text-2xl font-semibold">Купить VPN</h1><p className="mt-1.5 mb-0 text-sm text-muted-foreground">Выберите тариф и серверы, затем создайте заявку на подключение.</p></div>
 
-                <p style={subtitle}>
-                    Выберите тариф, серверы и создайте заявку на подключение.
-                </p>
+                <div className="mb-5 grid gap-3">
+                    {error && <Alert variant="error">{error}</Alert>}
+                    {existingAccountToken && <Alert variant="info">У вас уже есть личный кабинет. <Link href={buildAccountUrl(existingAccountToken)} className="font-medium underline">Открыть кабинет</Link></Alert>}
+                    {accountRestoring && <Alert>Проверяем предыдущий заказ...</Alert>}
+                </div>
 
-                {error && (
-                    <div style={errorBox}>
-                        {error}
-                    </div>
-                )}
+                <form onSubmit={submitOrder} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+                    <Card className="overflow-hidden">
+                        <CheckoutSection number="1" title="Тариф">
+                            {plans.length === 0 ? <div className="py-6 text-center text-sm text-muted-foreground">Сейчас нет доступных тарифов.</div> : (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {plans.map((plan) => {
+                                        const selected = String(plan.id) === String(selectedPlanId);
+                                        return (
+                                            <button key={plan.id} type="button" onClick={() => selectPlan(plan.id)} className={`min-h-32 rounded-md border p-4 text-left transition-colors ${selected ? "border-primary bg-[#eff4ff] ring-1 ring-primary" : "border-border bg-card hover:border-[#98a2b3]"}`}>
+                                                <span className="flex items-start justify-between gap-3"><span className="font-semibold">{plan.name}</span>{selected && <span className="flex size-5 items-center justify-center rounded-full bg-primary text-white"><Check className="size-3.5" /></span>}</span>
+                                                <span className="mt-3 block text-xl font-semibold text-primary">{formatPrice(plan.price, plan.currency)}</span>
+                                                <span className="mt-1.5 block text-xs text-muted-foreground">{plan.duration_days} дн. · {formatTraffic(plan.traffic_gb)} · {formatServerLimit(plan.server_limit)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </CheckoutSection>
 
-                {existingAccountToken && (
-                    <div style={existingAccountNotice}>
-                        <span>
-                            У вас уже есть личный кабинет.
-                        </span>
-
-                        <a
-                            href={buildAccountUrl(existingAccountToken)}
-                            style={noticeLink}
-                        >
-                            Открыть
-                        </a>
-                    </div>
-                )}
-
-                {accountRestoring && (
-                    <div style={restoringNotice}>
-                        Проверяем предыдущий заказ...
-                    </div>
-                )}
-
-                <form
-                    onSubmit={submitOrder}
-                    style={form}
-                >
-                    <section style={section}>
-                        <h2 style={sectionTitle}>
-                            <span style={stepNumber}>1</span>
-                            Тариф
-                        </h2>
-
-                        {plans.length === 0 ? (
-                            <div style={emptyState}>
-                                Сейчас нет доступных тарифов.
+                        <CheckoutSection number="2" title="VPN-серверы">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {servers.map((server) => {
+                                    const selected = selectedServerIds.includes(Number(server.id));
+                                    const limit = Number(selectedPlan?.server_limit || 1);
+                                    const disabled = limit > 1 && selectedServerIds.length >= limit && !selected;
+                                    return (
+                                        <label key={server.id} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
+                                            <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary" />
+                                            <ServerIcon className="size-4 text-muted-foreground" />
+                                            <span className="min-w-0"><span className="block truncate font-medium">{server.name}</span><span className="block truncate text-xs text-muted-foreground">{server.country}</span></span>
+                                        </label>
+                                    );
+                                })}
                             </div>
-                        ) : (
-                            <div style={planGrid}>
-                                {plans.map((plan) => (
-                                    <button
-                                        key={plan.id}
-                                        type="button"
-                                        onClick={() => selectPlan(plan.id)}
-                                        style={{
-                                            ...planButton,
-                                            borderColor: String(plan.id) === String(selectedPlanId)
-                                                ? "#2563eb"
-                                                : "#e5e7eb",
-                                        }}
-                                    >
-                                        <span style={planName}>
-                                            {plan.name}
-                                        </span>
+                            {selectedPlan && <div className="mt-3 text-xs text-muted-foreground">Выбрано {selectedServerIds.length} из {selectedPlan.server_limit} серверов.</div>}
+                        </CheckoutSection>
 
-                                        <span style={planPrice}>
-                                            {formatPrice(plan.price, plan.currency)}
-                                        </span>
-
-                                        <span style={planMeta}>
-                                            {plan.duration_days} дн. · {formatTraffic(plan.traffic_gb)} · {formatServerLimit(plan.server_limit)}
-                                        </span>
-                                    </button>
-                                ))}
+                        <CheckoutSection number="3" title="Данные клиента" last>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <Field label="Имя клиента / псевдоним">
+                                    <Input value={clientEmail} onChange={(event) => setClientEmail(event.target.value)} required autoComplete="off" placeholder="Например: alex" />
+                                </Field>
+                                <Field label="Контакт для связи">
+                                    <Input value={customerContact} onChange={(event) => setCustomerContact(event.target.value)} required placeholder="Telegram или телефон" />
+                                </Field>
                             </div>
-                        )}
-                    </section>
+                        </CheckoutSection>
+                    </Card>
 
-                    <section style={section}>
-                        <h2 style={sectionTitle}>
-                            <span style={stepNumber}>2</span>
-                            VPN-серверы
-                        </h2>
-
-                        <div style={serverBox}>
-                            {servers.map((server) => (
-                                <label
-                                    key={server.id}
-                                    style={checkboxRow}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedServerIds.includes(Number(server.id))}
-                                        onChange={() => toggleServer(server.id)}
-                                    />
-
-                                    {server.name} · {server.country}
-                                </label>
-                            ))}
+                    <Card className="p-5 lg:sticky lg:top-5">
+                        <div className="flex items-center gap-2"><ShoppingCart className="size-4 text-primary" /><h2 className="m-0 text-base font-semibold">Ваш заказ</h2></div>
+                        <div className="mt-4 grid gap-4">
+                            <Detail label="Тариф" value={selectedPlan?.name || "Не выбран"} />
+                            <Detail label="Серверы" value={selectedServerNames.length > 0 ? selectedServerNames.join(", ") : "Не выбраны"} />
+                            <div className="border-t border-border pt-4"><div className="text-xs text-muted-foreground">К оплате</div><div className="mt-1 text-2xl font-semibold">{selectedPlan ? formatPrice(selectedPlan.price, selectedPlan.currency) : "-"}</div></div>
+                            <Button type="submit" size="lg" disabled={submitDisabled} className="w-full">
+                                {saving || accountRestoring ? <Loader2 className="animate-spin" /> : <CreditCard />}
+                                {saving ? "Создание заказа..." : accountRestoring ? "Проверка заказа..." : "Перейти к оплате"}
+                            </Button>
                         </div>
-
-                        {selectedPlan && (
-                            <div style={hint}>
-                                По тарифу нужно выбрать серверов: {selectedPlan.server_limit}.
-                            </div>
-                        )}
-                    </section>
-
-                    <section style={section}>
-                        <h2 style={sectionTitle}>
-                            <span style={stepNumber}>3</span>
-                            Данные клиента
-                        </h2>
-
-                        <div style={fieldGrid}>
-                            <label style={field}>
-                                <span style={label}>
-                                    Имя клиента / псевдоним
-                                </span>
-
-                                <input
-                                    value={clientEmail}
-                                    onChange={(event) => setClientEmail(event.target.value)}
-                                    required
-                                    autoComplete="off"
-                                    placeholder="Например: alex"
-                                    style={input}
-                                />
-                            </label>
-
-                            <label style={field}>
-                                <span style={label}>
-                                    Контакт для связи
-                                </span>
-
-                                <input
-                                    value={customerContact}
-                                    onChange={(event) => setCustomerContact(event.target.value)}
-                                    required
-                                    placeholder="Telegram или телефон"
-                                    style={input}
-                                />
-                            </label>
-                        </div>
-                    </section>
-
-                    <div style={checkoutSummary}>
-                        <div>
-                            <div style={checkoutPlanName}>
-                                {selectedPlan?.name || "Тариф не выбран"}
-                            </div>
-
-                            <div style={checkoutMeta}>
-                                {selectedServerNames.length > 0
-                                    ? selectedServerNames.join(", ")
-                                    : "Выберите VPN-серверы"}
-                            </div>
-                        </div>
-
-                        <div style={checkoutTotal}>
-                            {selectedPlan
-                                ? formatPrice(selectedPlan.price, selectedPlan.currency)
-                                : "-"}
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={saving || accountRestoring || plans.length === 0}
-                        style={{
-                            ...primaryButton,
-                            opacity: saving || accountRestoring || plans.length === 0 ? .7 : 1,
-                            cursor: saving || accountRestoring || plans.length === 0 ? "not-allowed" : "pointer",
-                        }}
-                    >
-                        {saving
-                            ? "Создание заказа..."
-                            : accountRestoring
-                                ? "Проверка заказа..."
-                                : "Перейти к оплате"}
-                    </button>
+                    </Card>
                 </form>
-            </section>
-        </main>
-    );
-
-}
-
-function Detail({
-    label,
-    value,
-}) {
-
-    return (
-        <div style={detail}>
-            <div style={detailValue}>
-                {value || "-"}
-            </div>
-
-            <div style={detailLabel}>
-                {label}
-            </div>
+            </main>
         </div>
     );
-
 }
 
-function PaymentValue({
-    label,
-    value,
-    copied,
-    onCopy,
-}) {
+function CheckoutSection({ number, title, children, last = false }) {
+    return <section className={`px-5 py-5 sm:px-6 ${last ? "" : "border-b border-border"}`}><div className="mb-4 flex items-center gap-3"><span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-semibold text-white">{number}</span><h2 className="m-0 text-base font-semibold">{title}</h2></div>{children}</section>;
+}
 
+function Field({ label, children }) {
+    return <label className="grid gap-1.5"><span className="text-sm font-medium">{label}</span>{children}</label>;
+}
+
+function Detail({ label, value }) {
+    return <div className="min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 break-words text-sm font-semibold">{value || "-"}</div></div>;
+}
+
+function PaymentValue({ label, value, copied, onCopy }) {
     return (
-        <div style={paymentValue}>
-            <div>
-                <div style={paymentValueLabel}>
-                    {label}
-                </div>
-
-                <div style={paymentValueText}>
-                    {value || "-"}
-                </div>
-            </div>
-
-            <button
-                type="button"
-                disabled={!onCopy}
-                onClick={onCopy || undefined}
-                style={{
-                    ...copyButton,
-                    opacity: onCopy ? 1 : .55,
-                    cursor: onCopy ? "pointer" : "not-allowed",
-                }}
-            >
-                {copied ? "Скопировано" : "Копировать"}
-            </button>
+        <div className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-3">
+            <div className="min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-0.5 break-words text-sm font-semibold">{value || "-"}</div></div>
+            <Button type="button" variant="outline" size="sm" disabled={!onCopy} onClick={onCopy || undefined}><Copy />{copied ? "Скопировано" : "Копировать"}</Button>
         </div>
     );
-
 }
 
 function getOrCreateRequestId() {
-
     const currentRequestId = localStorage.getItem(REQUEST_ID_STORAGE_KEY);
-
-    if (currentRequestId) {
-        return currentRequestId;
-    }
-
+    if (currentRequestId) return currentRequestId;
     const requestId = createRequestId();
-
     localStorage.setItem(REQUEST_ID_STORAGE_KEY, requestId);
-
     return requestId;
-
 }
 
 function createRequestId() {
-
-    return typeof window.crypto?.randomUUID === "function"
-        ? window.crypto.randomUUID()
-        : `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
+    return typeof window.crypto?.randomUUID === "function" ? window.crypto.randomUUID() : `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function fallbackCopy(value) {
-
     const textareaElement = document.createElement("textarea");
-
     textareaElement.value = value;
     textareaElement.style.position = "fixed";
     textareaElement.style.left = "-9999px";
-
     document.body.appendChild(textareaElement);
     textareaElement.focus();
     textareaElement.select();
-
     document.execCommand("copy");
     document.body.removeChild(textareaElement);
-
 }
 
 function formatPrice(value, currency) {
-
-    const amount = Number(value || 0);
-
-    return `${amount.toLocaleString("ru-RU")} ${currency || "RUB"}`;
-
+    return `${Number(value || 0).toLocaleString("ru-RU")} ${currency || "RUB"}`;
 }
 
 function formatTraffic(value) {
-
     const gb = Number(value || 0);
-
     return gb > 0 ? `${gb} GB` : "без лимита";
-
 }
 
 function formatServerLimit(value) {
-
     const count = Number(value || 1);
-
     return count === 1 ? "1 сервер" : `${count} сервера`;
-
 }
 
 function buildAccountUrl(accountToken) {
-
-    if (typeof window === "undefined") {
-        return `/account/${accountToken}`;
-    }
-
-    return `${window.location.origin}/account/${accountToken}`;
-
+    return typeof window === "undefined" ? `/account/${accountToken}` : `${window.location.origin}/account/${accountToken}`;
 }
 
 function getErrorMessage(error, fallback) {
-
     const detail = error?.response?.data?.detail;
-
-    if (typeof detail === "string") {
-        return detail;
-    }
-
-    if (Array.isArray(detail)) {
-        return detail
-            .map((item) => item?.msg)
-            .filter(Boolean)
-            .join(". ");
-    }
-
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");
     return error?.message || fallback;
-
 }
-
-const page = {
-    minHeight: "100vh",
-    background: "#f5f7fb",
-    fontFamily: "Arial",
-    padding: 24,
-};
-
-const content = {
-    maxWidth: 980,
-    margin: "0 auto",
-};
-
-const loadingBox = {
-    padding: 40,
-    fontFamily: "Arial",
-};
-
-const title = {
-    margin: "0 0 8px",
-};
-
-const subtitle = {
-    margin: "0 0 24px",
-    color: "#6b7280",
-};
-
-const form = {
-    display: "grid",
-    gap: 24,
-};
-
-const section = {
-    display: "grid",
-    gap: 12,
-};
-
-const sectionTitle = {
-    display: "flex",
-    alignItems: "center",
-    gap: 9,
-    margin: 0,
-    fontSize: 20,
-};
-
-const stepNumber = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 28,
-    height: 28,
-    flex: "0 0 28px",
-    borderRadius: 8,
-    background: "#111827",
-    color: "#fff",
-    fontSize: 14,
-};
-
-const planGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-    gap: 12,
-};
-
-const planButton = {
-    display: "grid",
-    gap: 8,
-    textAlign: "left",
-    padding: 16,
-    border: "2px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-    cursor: "pointer",
-};
-
-const planName = {
-    fontSize: 18,
-    fontWeight: 700,
-    color: "#111827",
-};
-
-const planPrice = {
-    fontSize: 24,
-    fontWeight: 700,
-    color: "#2563eb",
-};
-
-const planMeta = {
-    color: "#6b7280",
-    fontSize: 14,
-};
-
-const serverBox = {
-    display: "grid",
-    gap: 8,
-    padding: 12,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const checkboxRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 14,
-};
-
-const hint = {
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const emptyState = {
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#6b7280",
-};
-
-const fieldGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 14,
-};
-
-const field = {
-    display: "grid",
-    gap: 6,
-};
-
-const label = {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "#374151",
-};
-
-const input = {
-    padding: 12,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    fontSize: 15,
-};
-
-const primaryButton = {
-    justifySelf: "end",
-    padding: "12px 18px",
-    border: "none",
-    borderRadius: 8,
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 15,
-};
-
-const checkoutSummary = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-    padding: 16,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const checkoutPlanName = {
-    color: "#111827",
-    fontWeight: 700,
-};
-
-const checkoutMeta = {
-    marginTop: 5,
-    color: "#6b7280",
-    fontSize: 14,
-};
-
-const checkoutTotal = {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: 700,
-};
-
-const errorBox = {
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};
-
-const existingAccountNotice = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 18,
-    padding: 12,
-    border: "1px solid #bfdbfe",
-    borderRadius: 8,
-    background: "#eff6ff",
-    color: "#1e40af",
-    fontSize: 14,
-};
-
-const restoringNotice = {
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#f1f5f9",
-    color: "#475569",
-    fontSize: 14,
-};
-
-const noticeLink = {
-    color: "#1d4ed8",
-    fontWeight: 700,
-    textDecoration: "none",
-};
-
-const summary = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-    gap: 12,
-    marginBottom: 24,
-};
-
-const detail = {
-    padding: 14,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const detailValue = {
-    color: "#111827",
-    fontWeight: 700,
-    overflowWrap: "anywhere",
-};
-
-const detailLabel = {
-    marginTop: 6,
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const paymentBox = {
-    display: "grid",
-    gap: 14,
-    padding: 18,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const paymentValues = {
-    display: "grid",
-    gap: 10,
-};
-
-const paymentValue = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 14,
-    flexWrap: "wrap",
-    padding: 12,
-    borderRadius: 8,
-    background: "#f9fafb",
-};
-
-const paymentValueLabel = {
-    color: "#6b7280",
-    fontSize: 12,
-};
-
-const paymentValueText = {
-    marginTop: 4,
-    color: "#111827",
-    fontSize: 17,
-    fontWeight: 700,
-    overflowWrap: "anywhere",
-};
-
-const copyButton = {
-    padding: "8px 12px",
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    fontSize: 13,
-};
-
-const paymentLine = {
-    marginTop: 10,
-    color: "#374151",
-    overflowWrap: "anywhere",
-};
-
-const instructions = {
-    marginTop: 12,
-    color: "#374151",
-    lineHeight: 1.45,
-};
-
-const accountNotice = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 8,
-    background: "#eef2ff",
-    color: "#3730a3",
-    fontSize: 14,
-};
-
-const accountNoticeText = {
-    marginTop: 6,
-    lineHeight: 1.4,
-};
-
-const primaryLink = {
-    display: "inline-flex",
-    padding: "11px 15px",
-    borderRadius: 8,
-    background: "#2563eb",
-    color: "#fff",
-    fontWeight: 700,
-    textDecoration: "none",
-    whiteSpace: "nowrap",
-};
-
-const link = {
-    color: "#2563eb",
-    fontWeight: 700,
-    textDecoration: "none",
-};

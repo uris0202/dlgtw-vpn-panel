@@ -2,8 +2,31 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import {
+    CalendarDays,
+    CheckCircle2,
+    Copy,
+    CreditCard,
+    KeyRound,
+    Loader2,
+    LogOut,
+    QrCode,
+    ReceiptText,
+    Save,
+    Server as ServerIcon,
+    TriangleAlert,
+    UserRound,
+    WifiOff,
+    X,
+} from "lucide-react";
 
+import PublicHeader from "../../../components/PublicHeader";
 import QRCodeCanvas from "../../../components/QRCodeCanvas";
+import { Alert } from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { Input, Textarea } from "../../../components/ui/input";
 import api from "../../../lib/api";
 import {
     CLIENT_ACCOUNT_PATH,
@@ -14,14 +37,10 @@ import {
 import { selectServersForPlan } from "../../../lib/serverSelection";
 
 export default function ClientAccountPage() {
-
     const params = useParams();
     const router = useRouter();
-    const accountToken = Array.isArray(params?.token)
-        ? params.token[0]
-        : params?.token;
+    const accountToken = Array.isArray(params?.token) ? params.token[0] : params?.token;
     const sessionMode = accountToken === "dashboard";
-
     const [settings, setSettings] = useState({});
     const [account, setAccount] = useState(null);
     const [subscriptions, setSubscriptions] = useState([]);
@@ -43,39 +62,21 @@ export default function ClientAccountPage() {
     const [error, setError] = useState("");
 
     useEffect(() => {
-
-        if (accountToken) {
-            loadAccount();
-        }
-
+        if (accountToken) loadAccount();
     }, [accountToken]);
 
-    const selectedPlan = useMemo(
-        () => plans.find((plan) => String(plan.id) === String(selectedPlanId)),
-        [plans, selectedPlanId],
-    );
-
-    const accessState = useMemo(
-        () => buildAccessState(account, subscriptions, orders),
-        [account, subscriptions, orders],
-    );
+    const selectedPlan = useMemo(() => plans.find((plan) => String(plan.id) === String(selectedPlanId)), [plans, selectedPlanId]);
+    const accessState = useMemo(() => buildAccessState(account, subscriptions, orders), [account, subscriptions, orders]);
 
     async function loadAccount() {
-
         setError("");
-
         try {
-
-            const response = await api.get(
-                getAccountEndpoint(accountToken, sessionMode),
-                sessionMode ? getClientAuthConfig() : undefined,
-            );
+            const response = await api.get(getAccountEndpoint(accountToken, sessionMode), sessionMode ? getClientAuthConfig() : undefined);
             const data = response.data || {};
             const loadedPlans = data.plans || [];
             const loadedServers = data.servers || [];
             const firstPlan = loadedPlans[0];
             const accountServerIds = data.account?.server_ids || [];
-
             setSettings(data.settings || {});
             setAccount(data.account || null);
             setSubscriptions(data.subscriptions || []);
@@ -83,1521 +84,409 @@ export default function ClientAccountPage() {
             setPlans(loadedPlans);
             setServers(loadedServers);
             setPayment(data.pending_payment || null);
-            setCredentialLogin(
-                data.account?.account_login
-                || data.account?.client_email
-                || "",
-            );
-
-            if (sessionMode) {
-                clearClientToken();
-            }
-
+            setCredentialLogin(data.account?.account_login || data.account?.client_email || "");
+            if (sessionMode) clearClientToken();
             if (!selectedPlanId && firstPlan) {
                 setSelectedPlanId(String(firstPlan.id));
-                setSelectedServerIds(
-                    selectServersForPlan(
-                        accountServerIds,
-                        loadedServers,
-                        firstPlan.server_limit,
-                    ),
-                );
+                setSelectedServerIds(selectServersForPlan(accountServerIds, loadedServers, firstPlan.server_limit));
             }
-
         } catch (error) {
-
             if (error?.response?.status === 401) {
                 clearClientToken();
                 router.replace("/account");
                 return;
             }
-
             setError(getErrorMessage(error, "Не удалось открыть личный кабинет."));
-
         } finally {
-
             setLoading(false);
-
         }
-
     }
 
     function selectPlan(planId) {
-
         const plan = plans.find((item) => String(item.id) === String(planId));
-
-        setSelectedPlanId(planId);
-        setSelectedServerIds((current) =>
-            plan
-                ? selectServersForPlan(current, servers, plan.server_limit)
-                : current
-        );
-
+        setSelectedPlanId(String(planId));
+        setSelectedServerIds((current) => plan ? selectServersForPlan(current, servers, plan.server_limit) : current);
     }
 
     function toggleServer(serverId) {
-
         const normalizedServerId = Number(serverId);
         const limit = Number(selectedPlan?.server_limit || 1);
-
         setSelectedServerIds((current) => {
-
-            if (current.includes(normalizedServerId)) {
-                return current.filter((item) => item !== normalizedServerId);
-            }
-
-            if (current.length >= limit) {
-                if (limit === 1) {
-                    return [normalizedServerId];
-                }
-
-                return current;
-            }
-
+            if (current.includes(normalizedServerId)) return current.filter((item) => item !== normalizedServerId);
+            if (current.length >= limit) return limit === 1 ? [normalizedServerId] : current;
             return [...current, normalizedServerId];
-
         });
-
     }
 
     async function submitRenew(event) {
-
         event.preventDefault();
-
         if (!selectedPlan) {
             setError("Выберите тариф.");
             return;
         }
-
         if (selectedServerIds.length !== Number(selectedPlan.server_limit || 1)) {
             setError(`По выбранному тарифу нужно выбрать серверов: ${selectedPlan.server_limit}.`);
             return;
         }
-
         setSaving(true);
         setError("");
-
         try {
-
-            const response = await api.post(
-                `${getAccountEndpoint(accountToken, sessionMode)}/renew`,
-                {
-                    plan_id: Number(selectedPlan.id),
-                    server_ids: selectedServerIds,
-                },
-                sessionMode ? getClientAuthConfig() : undefined,
-            );
-
+            const response = await api.post(`${getAccountEndpoint(accountToken, sessionMode)}/renew`, {
+                plan_id: Number(selectedPlan.id),
+                server_ids: selectedServerIds,
+            }, sessionMode ? getClientAuthConfig() : undefined);
             setPayment(response.data);
             setPaymentHidden(false);
             await loadAccount();
-
         } catch (error) {
-
-            if (handleSessionError(error, sessionMode, router)) {
-                return;
-            }
-
+            if (handleSessionError(error, sessionMode, router)) return;
             setError(getErrorMessage(error, "Не удалось создать заказ на продление."));
-
         } finally {
-
             setSaving(false);
-
         }
-
     }
 
     async function submitCredentials(event) {
-
         event.preventDefault();
         setCredentialMessage("");
         setError("");
-
         if (credentialPassword !== credentialPasswordConfirm) {
             setError("Пароли не совпадают.");
             return;
         }
-
         setCredentialSaving(true);
-
         try {
-
-            await api.patch(
-                `${getAccountEndpoint(accountToken, sessionMode)}/credentials`,
-                {
-                    login: credentialLogin.trim(),
-                    password: credentialPassword,
-                    current_password: currentPassword,
-                },
-                sessionMode ? getClientAuthConfig() : undefined,
-            );
-
+            await api.patch(`${getAccountEndpoint(accountToken, sessionMode)}/credentials`, {
+                login: credentialLogin.trim(),
+                password: credentialPassword,
+                current_password: currentPassword,
+            }, sessionMode ? getClientAuthConfig() : undefined);
             clearClientToken();
             clearClientOnboardingToken();
             setCredentialPassword("");
             setCredentialPasswordConfirm("");
             setCurrentPassword("");
             setCredentialMessage("Данные входа сохранены.");
-
             if (!sessionMode) {
                 router.replace(CLIENT_ACCOUNT_PATH);
                 return;
             }
-
             await loadAccount();
-
         } catch (error) {
-
-            if (handleSessionError(error, sessionMode, router)) {
-                return;
-            }
-
+            if (handleSessionError(error, sessionMode, router)) return;
             setError(getErrorMessage(error, "Не удалось сохранить данные входа."));
-
         } finally {
-
             setCredentialSaving(false);
-
         }
-
     }
 
     function handleAccessAction() {
-
         if (accessState.targetId === "pending-payment" && payment) {
             setPaymentHidden(false);
-
-            window.setTimeout(() => {
-                scrollToSection("pending-payment");
-            }, 0);
-
+            window.setTimeout(() => scrollToSection("pending-payment"), 0);
             return;
         }
-
         scrollToSection(accessState.targetId);
-
     }
 
     async function logout() {
-
-        try {
-            await api.post("/public/account/logout");
-        } finally {
+        try { await api.post("/public/account/logout"); } finally {
             clearClientToken();
             clearClientOnboardingToken();
             router.replace("/account");
         }
-
     }
 
     if (loading) {
-        return (
-            <div style={loadingBox}>
-                Загрузка...
-            </div>
-        );
+        return <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Загрузка кабинета...</div>;
     }
 
     if (error && !account) {
-        return (
-            <main style={page}>
-                <section style={content}>
-                    <div style={errorBox}>
-                        {error}
-                    </div>
-                </section>
-            </main>
-        );
+        return <div className="min-h-screen bg-background"><PublicHeader panelName={settings.panel_name || "DLGTW VPN"} /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><Alert variant="error">{error}</Alert></main></div>;
     }
 
-    return (
-        <main style={page}>
-            <section style={content}>
-                <header style={pageHeader}>
-                    <div>
-                        <h1 style={title}>
-                            {settings.panel_name || "DLGTW VPN"}
-                        </h1>
-
-                        <p style={subtitle}>
-                            Личный кабинет клиента
-                        </p>
-                    </div>
-
-                    <div style={headerControls}>
-                        {settings.support_contact && (
-                            <div style={supportBox}>
-                                Поддержка: <b>{settings.support_contact}</b>
-                            </div>
-                        )}
-
-                        {sessionMode && (
-                            <button
-                                type="button"
-                                onClick={logout}
-                                style={logoutButton}
-                            >
-                                Выйти
-                            </button>
-                        )}
-                    </div>
-                </header>
-
-                {error && (
-                    <div style={errorBox}>
-                        {error}
-                    </div>
-                )}
-
-                <section
-                    style={{
-                        ...accessBanner,
-                        ...getAccessTone(accessState.tone),
-                    }}
-                >
-                    <div>
-                        <div style={accessEyebrow}>
-                            Состояние доступа
-                        </div>
-
-                        <h2 style={accessTitle}>
-                            {accessState.title}
-                        </h2>
-
-                        <p style={accessDescription}>
-                            {accessState.description}
-                        </p>
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={handleAccessAction}
-                        style={accessButton}
-                    >
-                        {accessState.actionLabel}
-                    </button>
-                </section>
-
-                {payment && !paymentHidden && (
-                    <PaymentBox
-                        payment={payment}
-                        onClose={() => setPaymentHidden(true)}
-                    />
-                )}
-
-                <section style={summaryGrid}>
-                    <Summary label="Клиент" value={account?.client_email} />
-                    <Summary label="Статус" value={getStatusLabel(account?.status)} />
-                    <Summary label="Активно до" value={formatExpiry(account?.expires_at)} />
-                    <Summary label="Оплаченных заказов" value={account?.paid_orders || 0} />
-                </section>
-
-                {!account?.has_password && (
-                    <div style={warningBox}>
-                        Задайте логин и пароль для личного кабинета. После этого клиент сможет входить через обычную страницу входа в ЛК без длинной персональной ссылки.
-                    </div>
-                )}
-
-                <section style={section}>
-                    <h2 style={sectionTitle}>
-                        Вход в личный кабинет
-                    </h2>
-
-                    <form
-                        onSubmit={submitCredentials}
-                        style={credentialsForm}
-                    >
-                        <label style={field}>
-                            <span style={label}>
-                                Логин
-                            </span>
-
-                            <input
-                                value={credentialLogin}
-                                onChange={(event) => setCredentialLogin(event.target.value)}
-                                minLength={3}
-                                required
-                                autoComplete="username"
-                                style={input}
-                            />
-                        </label>
-
-                        {account?.has_password && (
-                            <label style={field}>
-                                <span style={label}>
-                                    Текущий пароль
-                                </span>
-
-                                <input
-                                    type="password"
-                                    value={currentPassword}
-                                    onChange={(event) => setCurrentPassword(event.target.value)}
-                                    required
-                                    autoComplete="current-password"
-                                    style={input}
-                                />
-                            </label>
-                        )}
-
-                        <label style={field}>
-                            <span style={label}>
-                                Новый пароль
-                            </span>
-
-                            <input
-                                type="password"
-                                value={credentialPassword}
-                                onChange={(event) => setCredentialPassword(event.target.value)}
-                                minLength={6}
-                                required
-                                autoComplete="new-password"
-                                style={input}
-                            />
-                        </label>
-
-                        <label style={field}>
-                            <span style={label}>
-                                Повторите пароль
-                            </span>
-
-                            <input
-                                type="password"
-                                value={credentialPasswordConfirm}
-                                onChange={(event) => setCredentialPasswordConfirm(event.target.value)}
-                                minLength={6}
-                                required
-                                autoComplete="new-password"
-                                style={input}
-                            />
-                        </label>
-
-                        <button
-                            type="submit"
-                            disabled={credentialSaving}
-                            style={{
-                                ...primaryButton,
-                                opacity: credentialSaving ? .7 : 1,
-                                cursor: credentialSaving ? "not-allowed" : "pointer",
-                            }}
-                        >
-                            {credentialSaving ? "Сохранение..." : "Сохранить вход"}
-                        </button>
-
-                        {credentialMessage && (
-                            <div style={successMessage}>
-                                {credentialMessage}
-                            </div>
-                        )}
-                    </form>
-                </section>
-
-                <section style={section}>
-                    <h2 style={sectionTitle}>
-                        Подписка
-                    </h2>
-
-                    {subscriptions.length === 0 ? (
-                        <div style={emptyState}>
-                            Подписка появится после подтверждения оплаты.
-                        </div>
-                    ) : (
-                        <div style={subscriptionGrid}>
-                            {subscriptions.map((subscription) => (
-                                <SubscriptionCard
-                                    key={subscription.server_id}
-                                    subscription={subscription}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                <section
-                    id="renew-access"
-                    style={section}
-                >
-                    <h2 style={sectionTitle}>
-                        Продлить доступ
-                    </h2>
-
-                    <form
-                        onSubmit={submitRenew}
-                        style={renewForm}
-                    >
-                        <div style={planGrid}>
-                            {plans.map((plan) => (
-                                <button
-                                    key={plan.id}
-                                    type="button"
-                                    onClick={() => selectPlan(plan.id)}
-                                    style={{
-                                        ...planButton,
-                                        borderColor: String(plan.id) === String(selectedPlanId)
-                                            ? "#2563eb"
-                                            : "#e5e7eb",
-                                    }}
-                                >
-                                    <span style={planName}>
-                                        {plan.name}
-                                    </span>
-
-                                    <span style={planPrice}>
-                                        {formatPrice(plan.price, plan.currency)}
-                                    </span>
-
-                                    <span style={planMeta}>
-                                        {plan.duration_days} дн. · {formatTrafficLimit(plan.traffic_gb)} · {formatServerLimit(plan.server_limit)}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-
-                        <div style={serverBox}>
-                            {servers.map((server) => (
-                                <label
-                                    key={server.id}
-                                    style={checkboxRow}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedServerIds.includes(Number(server.id))}
-                                        onChange={() => toggleServer(server.id)}
-                                    />
-
-                                    {server.name} · {server.country}
-                                </label>
-                            ))}
-                        </div>
-
-                        {selectedPlan && (
-                            <div style={hint}>
-                                По тарифу нужно выбрать серверов: {selectedPlan.server_limit}.
-                            </div>
-                        )}
-
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            style={{
-                                ...primaryButton,
-                                opacity: saving ? .7 : 1,
-                                cursor: saving ? "not-allowed" : "pointer",
-                            }}
-                        >
-                            {saving ? "Создание заказа..." : "Создать заказ на продление"}
-                        </button>
-                    </form>
-                </section>
-
-                <section style={section}>
-                    <h2 style={sectionTitle}>
-                        История заказов
-                    </h2>
-
-                    <div style={ordersList}>
-                        {orders.map((order) => (
-                            <OrderHistoryItem
-                                key={order.id}
-                                order={order}
-                            />
-                        ))}
-                    </div>
-                </section>
-            </section>
-        </main>
-    );
-
-}
-
-function Summary({
-    label,
-    value,
-}) {
+    const accessTone = getAccessTone(accessState.tone);
+    const AccessIcon = accessTone.icon;
 
     return (
-        <div style={summaryItem}>
-            <div style={summaryValue}>
-                {value || "-"}
-            </div>
+        <div className="min-h-screen bg-background">
+            <PublicHeader
+                panelName={settings.panel_name || "DLGTW VPN"}
+                actions={
+                    <div className="flex items-center gap-2">
+                        {settings.support_contact && <span className="hidden text-sm text-muted-foreground md:inline">Поддержка: <span className="font-medium text-foreground">{settings.support_contact}</span></span>}
+                        {sessionMode && <Button type="button" variant="ghost" onClick={logout}><LogOut />Выйти</Button>}
+                    </div>
+                }
+            />
 
-            <div style={summaryLabel}>
-                {label}
-            </div>
+            <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-9">
+                <div className="mb-6"><h1 className="m-0 text-2xl font-semibold">Личный кабинет</h1><p className="mt-1.5 mb-0 text-sm text-muted-foreground">Подписки, подключение и продление VPN-доступа</p></div>
+                {error && <Alert variant="error" className="mb-5">{error}</Alert>}
+
+                <section className={`mb-5 grid gap-4 rounded-lg border p-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center ${accessTone.className}`}>
+                    <div className="flex size-10 items-center justify-center rounded-md bg-white/70"><AccessIcon className="size-5" /></div>
+                    <div className="min-w-0"><div className="text-xs font-semibold uppercase">Состояние доступа</div><h2 className="mt-1 mb-0 text-lg font-semibold">{accessState.title}</h2><p className="mt-1 mb-0 text-sm opacity-85">{accessState.description}</p></div>
+                    <Button type="button" onClick={handleAccessAction} className="w-full sm:w-auto">{accessState.actionLabel}</Button>
+                </section>
+
+                {payment && !paymentHidden && <PaymentBox payment={payment} onClose={() => setPaymentHidden(true)} />}
+
+                <Card className="mb-5 overflow-hidden">
+                    <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
+                        <Summary icon={UserRound} label="Клиент" value={account?.client_email} />
+                        <Summary icon={CheckCircle2} label="Статус" value={getStatusLabel(account?.status)} />
+                        <Summary icon={CalendarDays} label="Активно до" value={formatExpiry(account?.expires_at)} />
+                        <Summary icon={ReceiptText} label="Оплачено заказов" value={account?.paid_orders || 0} />
+                    </div>
+                </Card>
+
+                {!account?.has_password && <Alert className="mb-5">Задайте логин и пароль. После этого входить в кабинет можно будет без длинной персональной ссылки.</Alert>}
+
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+                    <div className="grid gap-5">
+                        <section>
+                            <div className="mb-3"><h2 className="m-0 text-base font-semibold">Подписка</h2><p className="mt-1 mb-0 text-sm text-muted-foreground">QR-коды и ссылки для подключения к доступным серверам</p></div>
+                            {subscriptions.length === 0 ? (
+                                <Card className="flex min-h-40 flex-col items-center justify-center gap-2 p-6 text-center"><QrCode className="size-8 text-muted-foreground" /><div className="text-sm font-medium">Подписка ещё не активна</div><div className="text-sm text-muted-foreground">Ссылки появятся после подтверждения оплаты.</div></Card>
+                            ) : (
+                                <div className="grid gap-4 2xl:grid-cols-2">
+                                    {subscriptions.map((subscription) => <SubscriptionCard key={subscription.server_id} subscription={subscription} />)}
+                                </div>
+                            )}
+                        </section>
+
+                        <Card id="renew-access" className="scroll-mt-5 overflow-hidden">
+                            <div className="border-b border-border px-5 py-4"><h2 className="m-0 text-base font-semibold">Продлить доступ</h2><p className="mt-1 mb-0 text-sm text-muted-foreground">Выберите тариф и нужные VPN-серверы</p></div>
+                            <form onSubmit={submitRenew} className="grid gap-5 p-5">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {plans.map((plan) => {
+                                        const selected = String(plan.id) === String(selectedPlanId);
+                                        return (
+                                            <button key={plan.id} type="button" onClick={() => selectPlan(plan.id)} className={`min-h-28 rounded-md border p-4 text-left transition-colors ${selected ? "border-primary bg-[#eff4ff] ring-1 ring-primary" : "border-border bg-card hover:border-[#98a2b3]"}`}>
+                                                <span className="flex items-start justify-between gap-3"><span className="font-semibold">{plan.name}</span>{selected && <span className="flex size-5 items-center justify-center rounded-full bg-primary text-white"><CheckCircle2 className="size-3.5" /></span>}</span>
+                                                <span className="mt-2 block text-lg font-semibold text-primary">{formatPrice(plan.price, plan.currency)}</span>
+                                                <span className="mt-1 block text-xs text-muted-foreground">{plan.duration_days} дн. · {formatTrafficLimit(plan.traffic_gb)} · {formatServerLimit(plan.server_limit)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {servers.map((server) => {
+                                        const selected = selectedServerIds.includes(Number(server.id));
+                                        const limit = Number(selectedPlan?.server_limit || 1);
+                                        const disabled = limit > 1 && selectedServerIds.length >= limit && !selected;
+                                        return (
+                                            <label key={server.id} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
+                                                <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary" />
+                                                <ServerIcon className="size-4 text-muted-foreground" />
+                                                <span className="min-w-0"><span className="block truncate font-medium">{server.name}</span><span className="block truncate text-xs text-muted-foreground">{server.country}</span></span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <span className="text-xs text-muted-foreground">{selectedPlan ? `Выбрано ${selectedServerIds.length} из ${selectedPlan.server_limit} серверов` : "Выберите тариф"}</span>
+                                    <Button type="submit" disabled={saving || plans.length === 0}>{saving ? <Loader2 className="animate-spin" /> : <CreditCard />}{saving ? "Создание заказа..." : "Создать заказ на продление"}</Button>
+                                </div>
+                            </form>
+                        </Card>
+
+                        <Card className="overflow-hidden">
+                            <div className="border-b border-border px-5 py-4"><h2 className="m-0 text-base font-semibold">История заказов</h2></div>
+                            {orders.length === 0 ? <div className="p-6 text-center text-sm text-muted-foreground">Заказов пока нет.</div> : <div className="divide-y divide-border">{orders.map((order) => <OrderHistoryItem key={order.id} order={order} />)}</div>}
+                        </Card>
+                    </div>
+
+                    <Card className="overflow-hidden xl:sticky xl:top-5">
+                        <div className="border-b border-border px-5 py-4"><div className="flex items-center gap-2"><KeyRound className="size-4 text-primary" /><h2 className="m-0 text-base font-semibold">Вход в кабинет</h2></div><p className="mt-1 mb-0 text-sm text-muted-foreground">Изменение логина и пароля клиента</p></div>
+                        <form onSubmit={submitCredentials} className="grid gap-4 p-5">
+                            <Field label="Логин"><Input value={credentialLogin} onChange={(event) => setCredentialLogin(event.target.value)} minLength={3} required autoComplete="username" /></Field>
+                            {account?.has_password && <Field label="Текущий пароль"><Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required autoComplete="current-password" /></Field>}
+                            <Field label="Новый пароль"><Input type="password" value={credentialPassword} onChange={(event) => setCredentialPassword(event.target.value)} minLength={6} required autoComplete="new-password" /></Field>
+                            <Field label="Повторите пароль"><Input type="password" value={credentialPasswordConfirm} onChange={(event) => setCredentialPasswordConfirm(event.target.value)} minLength={6} required autoComplete="new-password" /></Field>
+                            {credentialMessage && <Alert variant="success">{credentialMessage}</Alert>}
+                            <Button type="submit" disabled={credentialSaving} className="w-full">{credentialSaving ? <Loader2 className="animate-spin" /> : <Save />}{credentialSaving ? "Сохранение..." : "Сохранить вход"}</Button>
+                        </form>
+                    </Card>
+                </div>
+            </main>
         </div>
     );
-
 }
 
-function SubscriptionCard({
-    subscription,
-}) {
+function Summary({ icon: Icon, label, value }) {
+    return <div className="min-w-0 p-4 sm:p-5"><Icon className="size-4 text-muted-foreground" /><div className="mt-2 truncate text-sm font-semibold" title={String(value || "-")}>{value || "-"}</div><div className="mt-0.5 text-[11px] text-muted-foreground">{label}</div></div>;
+}
 
+function SubscriptionCard({ subscription }) {
     return (
-        <article style={subscriptionCard}>
-            <div style={subscriptionHeader}>
-                <div>
-                    <h3 style={cardTitle}>
-                        {subscription.server_name}
-                    </h3>
-
-                    <div style={muted}>
-                        {subscription.country || "VPN-сервер"}
-                    </div>
-                </div>
-
-                <span
-                    style={{
-                        ...badge,
-                        ...(isSubscriptionActive(subscription) ? successBadge : warningBadge),
-                    }}
-                >
-                    {isSubscriptionActive(subscription) ? "Активна" : "Не активна"}
-                </span>
+        <Card className="overflow-hidden">
+            <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
+                <div className="min-w-0"><h3 className="m-0 truncate text-base font-semibold">{subscription.server_name}</h3><div className="mt-1 text-xs text-muted-foreground">{subscription.country || "VPN-сервер"}</div></div>
+                <Badge variant={isSubscriptionActive(subscription) ? "success" : "warning"}>{isSubscriptionActive(subscription) ? "Активна" : "Не активна"}</Badge>
             </div>
-
-            <div style={detailsGrid}>
-                <Detail label="Активно до" value={formatExpiry(subscription.expiry)} />
-                <Detail label="Трафик" value={formatBytes(subscription.traffic)} />
-            </div>
-
-            {subscription.error && (
-                <div style={warningBox}>
-                    {subscription.error}
-                </div>
-            )}
-
-            <LinkSection
-                title="VLESS"
-                value={subscription.vless_url}
-            />
-
-            <LinkSection
-                title="Subscription URL"
-                value={subscription.subscription_url}
-            />
-        </article>
+            <div className="grid grid-cols-2 divide-x divide-border border-b border-border"><DetailBox label="Активно до" value={formatExpiry(subscription.expiry)} /><DetailBox label="Трафик" value={formatBytes(subscription.traffic)} /></div>
+            {subscription.error && <Alert variant="error" className="m-4">{subscription.error}</Alert>}
+            <LinkSection title="VLESS" value={subscription.vless_url} />
+            <LinkSection title="Subscription URL" value={subscription.subscription_url} />
+        </Card>
     );
-
 }
 
-function LinkSection({
-    title,
-    value,
-}) {
-
+function LinkSection({ title, value }) {
     const [status, setStatus] = useState("");
-
     return (
-        <div style={linkSection}>
-            <div style={linkInfo}>
-                <div style={linkTitle}>
-                    {title}
-                </div>
-
-                <textarea
-                    readOnly
-                    value={value || "Ссылка недоступна"}
-                    style={textarea}
-                />
-
-                <button
-                    type="button"
-                    disabled={!value}
-                    onClick={() => copyText(value, setStatus)}
-                    style={{
-                        ...secondaryButton,
-                        opacity: value ? 1 : .65,
-                        cursor: value ? "pointer" : "not-allowed",
-                    }}
-                >
-                    Copy
-                </button>
-
-                {status && (
-                    <span style={copyStatus}>
-                        {status}
-                    </span>
-                )}
-            </div>
-
-            <QRCodeCanvas
-                value={value}
-                size={150}
-            />
+        <div className="grid gap-3 border-t border-border p-4 first:border-t-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="min-w-0"><div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{title}</div><Textarea readOnly value={value || "Ссылка недоступна"} className="min-h-20 font-mono text-[11px] leading-4" /><div className="mt-2 flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!value} onClick={() => copyText(value, setStatus)}><Copy />Копировать</Button>{status && <span className="text-xs font-medium text-[#067647]">{status}</span>}</div></div>
+            <div className="justify-self-center sm:justify-self-end"><QRCodeCanvas value={value} size={132} /></div>
         </div>
     );
-
 }
 
-function PaymentBox({
-    payment,
-    onClose,
-}) {
-
+function PaymentBox({ payment, onClose }) {
     return (
-        <section
-            id="pending-payment"
-            style={paymentBox}
-        >
-            <div style={paymentHeader}>
-                <div>
-                    <h2 style={sectionTitle}>
-                        Заказ #{payment.id}
-                    </h2>
-
-                    <p style={paymentSubtitle}>
-                        Переведите оплату по номеру телефона.
-                    </p>
-                </div>
-
-                <button
-                    type="button"
-                    onClick={onClose}
-                    style={secondaryButton}
-                >
-                    Скрыть
-                </button>
-            </div>
-
-            <div style={detailsGrid}>
-                <Detail label="Тариф" value={payment.plan_name} />
-                <Detail label="Серверы" value={payment.server_names} />
-                <Detail label="Сумма" value={formatPrice(payment.amount, payment.currency)} />
-                <Detail label="Комментарий" value={payment.payment_comment} />
-            </div>
-
-            <div style={paymentLine}>
-                Номер телефона: <b>{payment.payment_phone || "не указан"}</b>
-            </div>
-
-            {payment.payment_recipient && (
-                <div style={paymentLine}>
-                    Получатель: <b>{payment.payment_recipient}</b>
-                </div>
-            )}
-
-            {payment.payment_instructions && (
-                <p style={instructions}>
-                    {payment.payment_instructions}
-                </p>
-            )}
-        </section>
+        <Card id="pending-payment" className="mb-5 scroll-mt-5 overflow-hidden border-[#fedf89]">
+            <div className="flex items-start justify-between gap-4 border-b border-[#fedf89] bg-[#fffaeb] px-5 py-4"><div><div className="flex items-center gap-2"><CreditCard className="size-4 text-[#b54708]" /><h2 className="m-0 text-base font-semibold">Оплата заказа #{payment.id}</h2></div><p className="mt-1 mb-0 text-sm text-[#b54708]">Переведите указанную сумму и используйте точный комментарий.</p></div><Button type="button" variant="ghost" size="icon" onClick={onClose} title="Скрыть" aria-label="Скрыть"><X /></Button></div>
+            <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"><Detail label="Тариф" value={payment.plan_name} /><Detail label="Серверы" value={payment.server_names} /><Detail label="Сумма" value={formatPrice(payment.amount, payment.currency)} /><Detail label="Комментарий" value={payment.payment_comment} /></div>
+            <div className="grid gap-2 border-t border-border px-5 py-4 text-sm"><div>Номер телефона: <b>{payment.payment_phone || "не указан"}</b></div>{payment.payment_recipient && <div>Получатель: <b>{payment.payment_recipient}</b></div>}{payment.payment_instructions && <p className="m-0 text-muted-foreground">{payment.payment_instructions}</p>}</div>
+        </Card>
     );
-
 }
 
-function OrderHistoryItem({
-    order,
-}) {
-
+function OrderHistoryItem({ order }) {
     return (
-        <div style={orderItem}>
-            <div>
-                <strong>
-                    Заказ #{order.id}
-                </strong>
-
-                <div style={muted}>
-                    {order.plan_name || "Без тарифа"} · {order.server_names || "Сервер не выбран"}
-                </div>
-
-                {order.activation_error && (
-                    <div style={warningBox}>
-                        {order.activation_error}
-                    </div>
-                )}
-            </div>
-
-            <div style={orderRight}>
-                <span
-                    style={{
-                        ...badge,
-                        ...getOrderBadge(order.status),
-                    }}
-                >
-                    {getOrderStatusLabel(order.status)}
-                </span>
-
-                <div style={muted}>
-                    {formatPrice(order.amount, order.currency)}
-                </div>
-            </div>
+        <div className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="min-w-0"><div className="font-semibold">Заказ #{order.id}</div><div className="mt-1 text-sm text-muted-foreground">{order.plan_name || "Без тарифа"} · {order.server_names || "Сервер не выбран"}</div>{order.activation_error && <div className="mt-2 text-xs text-[#b42318]">{order.activation_error}</div>}</div>
+            <div className="flex items-center gap-3 sm:flex-col sm:items-end sm:gap-1"><Badge variant={getOrderVariant(order.status)}>{getOrderStatusLabel(order.status)}</Badge><div className="text-sm font-semibold">{formatPrice(order.amount, order.currency)}</div></div>
         </div>
     );
-
 }
 
-function Detail({
-    label,
-    value,
-}) {
+function Field({ label, children }) {
+    return <label className="grid gap-1.5"><span className="text-sm font-medium">{label}</span>{children}</label>;
+}
 
-    return (
-        <div style={detail}>
-            <div style={detailValue}>
-                {value || "-"}
-            </div>
+function Detail({ label, value }) {
+    return <div className="min-w-0"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 break-words text-sm font-semibold">{value || "-"}</div></div>;
+}
 
-            <div style={detailLabel}>
-                {label}
-            </div>
-        </div>
-    );
-
+function DetailBox({ label, value }) {
+    return <div className="min-w-0 p-3 text-center"><div className="truncate text-sm font-semibold" title={String(value)}>{value}</div><div className="mt-0.5 text-[11px] text-muted-foreground">{label}</div></div>;
 }
 
 async function copyText(value, setStatus) {
-
-    if (!value) {
-        return;
-    }
-
-    try {
-        await navigator.clipboard.writeText(value);
-        setTemporaryStatus(setStatus, "Скопировано.");
-    } catch {
-        fallbackCopy(value);
-        setTemporaryStatus(setStatus, "Скопировано.");
-    }
-
+    if (!value) return;
+    try { await navigator.clipboard.writeText(value); } catch { fallbackCopy(value); }
+    setTemporaryStatus(setStatus, "Скопировано.");
 }
 
 function setTemporaryStatus(setStatus, message) {
-
     setStatus(message);
-
-    window.setTimeout(() => {
-        setStatus("");
-    }, 2200);
-
+    window.setTimeout(() => setStatus(""), 2200);
 }
 
 function fallbackCopy(value) {
-
     const textareaElement = document.createElement("textarea");
-
     textareaElement.value = value;
     textareaElement.style.position = "fixed";
     textareaElement.style.left = "-9999px";
-
     document.body.appendChild(textareaElement);
     textareaElement.focus();
     textareaElement.select();
-
     document.execCommand("copy");
     document.body.removeChild(textareaElement);
-
 }
 
 function getAccountEndpoint(accountToken, sessionMode) {
-
-    return sessionMode
-        ? "/public/account/session"
-        : `/public/account/${accountToken}`;
-
+    return sessionMode ? "/public/account/session" : `/public/account/${accountToken}`;
 }
 
 function handleSessionError(error, sessionMode, router) {
-
     if (sessionMode && error?.response?.status === 401) {
         clearClientToken();
         router.replace("/account");
         return true;
     }
-
     return false;
-
 }
 
 function scrollToSection(sectionId) {
-
-    document.getElementById(sectionId)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-    });
-
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function buildAccessState(account, subscriptions, orders) {
-
     const activeSubscriptions = (subscriptions || []).filter(isSubscriptionActive);
     const pendingOrder = (orders || []).find((order) => order.status === "pending");
-
-    if (account?.status === "active") {
-        return {
-            title: "Доступ активен",
-            description: `Активно до ${formatExpiry(account.expires_at)}. Доступных серверов: ${activeSubscriptions.length}.`,
-            actionLabel: "Продлить доступ",
-            targetId: "renew-access",
-            tone: "success",
-        };
-    }
-
-    if (account?.status === "pending") {
-        return {
-            title: "Оплата ожидает подтверждения",
-            description: pendingOrder
-                ? `Заказ #${pendingOrder.id} создан. После перевода оплата будет подтверждена администратором.`
-                : "После перевода оплата будет подтверждена администратором.",
-            actionLabel: "Реквизиты оплаты",
-            targetId: "pending-payment",
-            tone: "warning",
-        };
-    }
-
-    if (account?.status === "expired") {
-        return {
-            title: "Срок доступа закончился",
-            description: "Выберите тариф и серверы, чтобы снова пользоваться VPN.",
-            actionLabel: "Возобновить доступ",
-            targetId: "renew-access",
-            tone: "danger",
-        };
-    }
-
-    return {
-        title: "Доступ ещё не подключён",
-        description: "Выберите подходящий тариф и серверы для первого подключения.",
-        actionLabel: "Выбрать тариф",
-        targetId: "renew-access",
-        tone: "neutral",
-    };
-
+    if (account?.status === "active") return { title: "Доступ активен", description: `Активно до ${formatExpiry(account.expires_at)}. Доступных серверов: ${activeSubscriptions.length}.`, actionLabel: "Продлить доступ", targetId: "renew-access", tone: "success" };
+    if (account?.status === "pending") return { title: "Оплата ожидает подтверждения", description: pendingOrder ? `Заказ #${pendingOrder.id} создан. После перевода оплата будет подтверждена администратором.` : "После перевода оплата будет подтверждена администратором.", actionLabel: "Реквизиты оплаты", targetId: "pending-payment", tone: "warning" };
+    if (account?.status === "expired") return { title: "Срок доступа закончился", description: "Выберите тариф и серверы, чтобы снова пользоваться VPN.", actionLabel: "Возобновить доступ", targetId: "renew-access", tone: "danger" };
+    return { title: "Доступ ещё не подключён", description: "Выберите подходящий тариф и серверы для первого подключения.", actionLabel: "Выбрать тариф", targetId: "renew-access", tone: "neutral" };
 }
 
 function getAccessTone(tone) {
-
-    if (tone === "success") {
-        return accessSuccess;
-    }
-
-    if (tone === "warning") {
-        return accessWarning;
-    }
-
-    if (tone === "danger") {
-        return accessDanger;
-    }
-
-    return accessNeutral;
-
+    if (tone === "success") return { className: "border-[#abefc6] bg-[#ecfdf3] text-[#067647]", icon: CheckCircle2 };
+    if (tone === "warning") return { className: "border-[#fedf89] bg-[#fffaeb] text-[#b54708]", icon: TriangleAlert };
+    if (tone === "danger") return { className: "border-[#fecdca] bg-[#fef3f2] text-[#b42318]", icon: WifiOff };
+    return { className: "border-border bg-muted text-foreground", icon: ServerIcon };
 }
 
 function getStatusLabel(status) {
-
-    if (status === "active") {
-        return "Активна";
-    }
-
-    if (status === "pending") {
-        return "Ожидает оплаты";
-    }
-
-    if (status === "expired") {
-        return "Истекла";
-    }
-
+    if (status === "active") return "Активна";
+    if (status === "pending") return "Ожидает оплаты";
+    if (status === "expired") return "Истекла";
     return "Новая";
-
 }
 
 function getOrderStatusLabel(status) {
-
-    if (status === "paid") {
-        return "Оплачен";
-    }
-
-    if (status === "canceled") {
-        return "Отменён";
-    }
-
-    if (status === "access") {
-        return "Доступ в ЛК";
-    }
-
+    if (status === "paid") return "Оплачен";
+    if (status === "canceled") return "Отменён";
+    if (status === "access") return "Доступ в ЛК";
     return "Ожидает оплаты";
-
 }
 
-function getOrderBadge(status) {
-
-    if (status === "paid") {
-        return successBadge;
-    }
-
-    if (status === "canceled") {
-        return dangerBadge;
-    }
-
-    if (status === "access") {
-        return infoBadge;
-    }
-
-    return warningBadge;
-
+function getOrderVariant(status) {
+    if (status === "paid") return "success";
+    if (status === "canceled") return "destructive";
+    if (status === "access") return "default";
+    return "warning";
 }
 
 function isSubscriptionActive(subscription) {
-
-    if (!subscription.enabled) {
-        return false;
-    }
-
+    if (!subscription.enabled) return false;
     const expiry = Number(subscription.expiry || 0);
-
     return expiry === 0 || expiry > Date.now();
-
 }
 
 function formatExpiry(value) {
-
     const timestamp = Number(value || 0);
-
-    if (!timestamp) {
-        return "Без срока";
-    }
-
-    return new Date(timestamp).toLocaleDateString("ru-RU");
-
+    return timestamp ? new Date(timestamp).toLocaleDateString("ru-RU") : "Без срока";
 }
 
 function formatPrice(value, currency) {
-
-    const amount = Number(value || 0);
-
-    return `${amount.toLocaleString("ru-RU")} ${currency || "RUB"}`;
-
+    return `${Number(value || 0).toLocaleString("ru-RU")} ${currency || "RUB"}`;
 }
 
 function formatBytes(value) {
-
     const bytes = Number(value || 0);
-
-    if (!bytes) {
-        return "0 GB";
-    }
-
-    return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
-
+    return bytes ? `${(bytes / 1024 ** 3).toFixed(2)} GB` : "0 GB";
 }
 
 function formatTrafficLimit(value) {
-
     const gb = Number(value || 0);
-
     return gb > 0 ? `${gb} GB` : "без лимита";
-
 }
 
 function formatServerLimit(value) {
-
     const count = Number(value || 1);
-
     return count === 1 ? "1 сервер" : `${count} сервера`;
-
 }
 
 function getErrorMessage(error, fallback) {
-
     const detail = error?.response?.data?.detail;
-
-    if (typeof detail === "string") {
-        return detail;
-    }
-
-    if (Array.isArray(detail)) {
-        return detail
-            .map((item) => item?.msg)
-            .filter(Boolean)
-            .join(". ");
-    }
-
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");
     return error?.message || fallback;
-
 }
-
-const page = {
-    minHeight: "100vh",
-    padding: 24,
-    background: "#f5f7fb",
-    fontFamily: "Arial",
-};
-
-const content = {
-    maxWidth: 1180,
-    margin: "0 auto",
-};
-
-const loadingBox = {
-    padding: 40,
-    fontFamily: "Arial",
-};
-
-const pageHeader = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 16,
-    flexWrap: "wrap",
-    marginBottom: 20,
-};
-
-const headerControls = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 10,
-    flexWrap: "wrap",
-};
-
-const title = {
-    margin: "0 0 8px",
-};
-
-const subtitle = {
-    margin: 0,
-    color: "#6b7280",
-};
-
-const supportBox = {
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#374151",
-};
-
-const logoutButton = {
-    padding: "11px 14px",
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    cursor: "pointer",
-    fontSize: 14,
-};
-
-const accessBanner = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 18,
-    flexWrap: "wrap",
-    marginBottom: 18,
-    padding: 18,
-    border: "1px solid",
-    borderRadius: 8,
-};
-
-const accessSuccess = {
-    borderColor: "#86efac",
-    background: "#f0fdf4",
-    color: "#166534",
-};
-
-const accessWarning = {
-    borderColor: "#fcd34d",
-    background: "#fffbeb",
-    color: "#92400e",
-};
-
-const accessDanger = {
-    borderColor: "#fca5a5",
-    background: "#fef2f2",
-    color: "#991b1b",
-};
-
-const accessNeutral = {
-    borderColor: "#cbd5e1",
-    background: "#f8fafc",
-    color: "#334155",
-};
-
-const accessEyebrow = {
-    marginBottom: 5,
-    fontSize: 12,
-    fontWeight: 700,
-    textTransform: "uppercase",
-};
-
-const accessTitle = {
-    margin: 0,
-    fontSize: 22,
-};
-
-const accessDescription = {
-    margin: "7px 0 0",
-    lineHeight: 1.45,
-};
-
-const accessButton = {
-    padding: "11px 16px",
-    border: "none",
-    borderRadius: 8,
-    background: "#111827",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 14,
-    fontWeight: 700,
-};
-
-const summaryGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-    gap: 12,
-    marginBottom: 22,
-};
-
-const summaryItem = {
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const summaryValue = {
-    color: "#111827",
-    fontSize: 22,
-    fontWeight: 700,
-    overflowWrap: "anywhere",
-};
-
-const summaryLabel = {
-    marginTop: 6,
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const section = {
-    display: "grid",
-    gap: 12,
-    marginTop: 26,
-};
-
-const sectionTitle = {
-    margin: 0,
-    fontSize: 20,
-};
-
-const subscriptionGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 14,
-};
-
-const subscriptionCard = {
-    display: "grid",
-    gap: 14,
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const subscriptionHeader = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-};
-
-const cardTitle = {
-    margin: "0 0 5px",
-    fontSize: 18,
-};
-
-const muted = {
-    color: "#6b7280",
-    fontSize: 14,
-};
-
-const detailsGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-    gap: 10,
-};
-
-const detail = {
-    padding: 10,
-    borderRadius: 8,
-    background: "#f9fafb",
-};
-
-const detailValue = {
-    color: "#111827",
-    fontWeight: 700,
-    overflowWrap: "anywhere",
-};
-
-const detailLabel = {
-    marginTop: 4,
-    color: "#6b7280",
-    fontSize: 12,
-};
-
-const linkSection = {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    gap: 14,
-    alignItems: "start",
-};
-
-const linkInfo = {
-    minWidth: 0,
-};
-
-const linkTitle = {
-    marginBottom: 6,
-    color: "#111827",
-    fontWeight: 700,
-};
-
-const textarea = {
-    width: "100%",
-    minHeight: 74,
-    resize: "vertical",
-    boxSizing: "border-box",
-    padding: 10,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    fontSize: 13,
-    lineHeight: 1.45,
-};
-
-const copyStatus = {
-    marginLeft: 10,
-    color: "#047857",
-    fontSize: 13,
-};
-
-const renewForm = {
-    display: "grid",
-    gap: 12,
-};
-
-const credentialsForm = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 12,
-    alignItems: "end",
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const field = {
-    display: "grid",
-    gap: 6,
-};
-
-const label = {
-    color: "#374151",
-    fontSize: 14,
-    fontWeight: 700,
-};
-
-const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: 11,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    fontSize: 14,
-};
-
-const planGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-    gap: 12,
-};
-
-const planButton = {
-    display: "grid",
-    gap: 8,
-    textAlign: "left",
-    padding: 16,
-    border: "2px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-    cursor: "pointer",
-};
-
-const planName = {
-    fontSize: 18,
-    fontWeight: 700,
-    color: "#111827",
-};
-
-const planPrice = {
-    fontSize: 23,
-    fontWeight: 700,
-    color: "#2563eb",
-};
-
-const planMeta = {
-    color: "#6b7280",
-    fontSize: 14,
-};
-
-const serverBox = {
-    display: "grid",
-    gap: 8,
-    padding: 12,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const checkboxRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 14,
-};
-
-const hint = {
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const ordersList = {
-    display: "grid",
-    gap: 10,
-};
-
-const orderItem = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-    padding: 14,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const orderRight = {
-    display: "grid",
-    justifyItems: "end",
-    gap: 8,
-};
-
-const badge = {
-    display: "inline-flex",
-    padding: "5px 9px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-};
-
-const successBadge = {
-    background: "#dcfce7",
-    color: "#166534",
-};
-
-const warningBadge = {
-    background: "#fef3c7",
-    color: "#92400e",
-};
-
-const dangerBadge = {
-    background: "#fee2e2",
-    color: "#991b1b",
-};
-
-const infoBadge = {
-    background: "#dbeafe",
-    color: "#1e40af",
-};
-
-const primaryButton = {
-    justifySelf: "start",
-    padding: "12px 18px",
-    border: "none",
-    borderRadius: 8,
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 15,
-};
-
-const secondaryButton = {
-    marginTop: 8,
-    padding: "9px 13px",
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    fontSize: 14,
-};
-
-const paymentBox = {
-    display: "grid",
-    gap: 14,
-    marginBottom: 22,
-    padding: 18,
-    border: "1px solid #c7d2fe",
-    borderRadius: 8,
-    background: "#eef2ff",
-};
-
-const paymentHeader = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-};
-
-const paymentSubtitle = {
-    margin: "6px 0 0",
-    color: "#4338ca",
-};
-
-const paymentLine = {
-    color: "#374151",
-    overflowWrap: "anywhere",
-};
-
-const instructions = {
-    margin: 0,
-    color: "#374151",
-    lineHeight: 1.45,
-};
-
-const errorBox = {
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};
-
-const successMessage = {
-    color: "#047857",
-    fontSize: 14,
-    fontWeight: 700,
-};
-
-const warningBox = {
-    padding: 10,
-    borderRadius: 8,
-    background: "#fef3c7",
-    color: "#92400e",
-    fontSize: 13,
-    overflowWrap: "anywhere",
-};
-
-const emptyState = {
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#6b7280",
-};
