@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CalendarDays, Gauge, Pencil, Plus, RefreshCw, Server, Trash2, WalletCards } from "lucide-react";
 
-import Sidebar from "../../components/Sidebar";
-import Header from "../../components/Header";
+import AdminLayout from "../../components/AdminLayout";
+import PageHeading from "../../components/PageHeading";
 import PlanModal from "../../components/PlanModal";
-
+import StatCard from "../../components/StatCard";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { getMe } from "../../lib/auth";
 import api from "../../lib/api";
 
 export default function PlansPage() {
-
     const router = useRouter();
-
     const [user, setUser] = useState(null);
     const [plans, setPlans] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -26,610 +29,193 @@ export default function PlansPage() {
     const [saving, setSaving] = useState(false);
 
     async function loadPlans() {
-
         setPageError("");
-
         const me = await getMe();
-
         if (!me) {
             router.replace("/login");
             return;
         }
-
         setUser(me);
-
         try {
-
-            const response = await api.get(
-                "/plans",
-                getAuthConfig(),
-            );
-
+            const response = await api.get("/plans", getAuthConfig());
             setPlans(Array.isArray(response.data) ? response.data : []);
-
         } catch (error) {
-
             setPageError(getErrorMessage(error, "Не удалось загрузить тарифы."));
-
         } finally {
-
             setLoading(false);
-
         }
-
     }
 
-    useEffect(() => {
-
-        loadPlans();
-
-    }, [router]);
+    useEffect(() => { loadPlans(); }, [router]);
 
     function logout() {
-
         localStorage.removeItem("token");
-
         router.replace("/login");
-
     }
 
     async function refreshPlans() {
-
         setRefreshing(true);
-
-        try {
-            await loadPlans();
-        } finally {
-            setRefreshing(false);
-        }
-
+        try { await loadPlans(); } finally { setRefreshing(false); }
     }
 
     function openCreateModal() {
-
         setModalMode("create");
         setSelectedPlan(null);
         setModalError("");
         setModalOpen(true);
-
     }
 
     function openEditModal(plan) {
-
         setModalMode("edit");
         setSelectedPlan(plan);
         setModalError("");
         setModalOpen(true);
-
     }
 
     function closeModal() {
-
-        if (saving) {
-            return;
-        }
-
+        if (saving) return;
         setModalOpen(false);
         setSelectedPlan(null);
         setModalError("");
         setModalMode("create");
-
     }
 
     async function savePlan(payload) {
-
         setSaving(true);
         setModalError("");
-
         try {
-
             if (modalMode === "edit" && selectedPlan) {
-                await api.patch(
-                    `/plans/${selectedPlan.id}`,
-                    payload,
-                    getAuthConfig(),
-                );
+                await api.patch(`/plans/${selectedPlan.id}`, payload, getAuthConfig());
             } else {
-                await api.post(
-                    "/plans",
-                    payload,
-                    getAuthConfig(),
-                );
+                await api.post("/plans", payload, getAuthConfig());
             }
-
             setModalOpen(false);
             setSelectedPlan(null);
             setModalMode("create");
             await loadPlans();
-
         } catch (error) {
-
             setModalError(getErrorMessage(error, "Не удалось сохранить тариф."));
-
         } finally {
-
             setSaving(false);
-
         }
-
     }
 
     async function deletePlan(plan) {
-
-        if (!confirm(`Удалить тариф "${plan.name}"?`)) {
-            return;
-        }
-
+        if (!confirm(`Удалить тариф "${plan.name}"?`)) return;
         setPageError("");
-
         try {
-
-            await api.delete(
-                `/plans/${plan.id}`,
-                getAuthConfig(),
-            );
-
+            await api.delete(`/plans/${plan.id}`, getAuthConfig());
             await loadPlans();
-
         } catch (error) {
-
             setPageError(getErrorMessage(error, "Не удалось удалить тариф."));
-
         }
-
-    }
-
-    if (loading) {
-        return (
-            <div style={loadingBox}>
-                Загрузка...
-            </div>
-        );
     }
 
     const activePlans = plans.filter((plan) => plan.is_active);
     const disabledPlans = plans.filter((plan) => !plan.is_active);
 
     return (
-        <div style={page}>
-            <Sidebar />
-
-            <div style={main}>
-                <Header
-                    user={user}
-                    onLogout={logout}
-                />
-
-                <main style={content}>
-                    <div style={pageHeader}>
-                        <div>
-                            <h1 style={title}>
-                                Тарифы
-                            </h1>
-
-                            <p style={subtitle}>
-                                Планы продаж для новых VPN-клиентов.
-                            </p>
-                        </div>
-
-                        <div style={headerActions}>
-                            <button
-                                onClick={refreshPlans}
-                                disabled={refreshing}
-                                style={secondaryButton}
-                            >
-                                {refreshing ? "Обновление..." : "Обновить"}
-                            </button>
-
-                            <button
-                                onClick={openCreateModal}
-                                style={primaryButton}
-                            >
-                                Новый тариф
-                            </button>
-                        </div>
-                    </div>
-
-                    {pageError && (
-                        <div style={errorBox}>
-                            {pageError}
-                        </div>
-                    )}
-
-                    <div style={summaryGrid}>
-                        <Summary label="Всего тарифов" value={plans.length} />
-                        <Summary label="Активных" value={activePlans.length} />
-                        <Summary label="Отключено" value={disabledPlans.length} />
-                    </div>
-
-                    {plans.length === 0 ? (
-                        <div style={emptyState}>
-                            Тарифы пока не добавлены.
-                        </div>
-                    ) : (
-                        <div style={grid}>
-                            {plans.map((plan) => (
-                                <PlanCard
-                                    key={plan.id}
-                                    plan={plan}
-                                    onEdit={() => openEditModal(plan)}
-                                    onDelete={() => deletePlan(plan)}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </main>
-            </div>
-
-            <PlanModal
-                open={modalOpen}
-                mode={modalMode}
-                plan={selectedPlan}
-                error={modalError}
-                saving={saving}
-                onClose={closeModal}
-                onSave={savePlan}
+        <AdminLayout user={user} onLogout={logout}>
+            <PageHeading
+                title="Тарифы"
+                description="Планы продаж, стоимость и доступное количество VPN-серверов"
+                actions={
+                    <>
+                        <Button variant="outline" onClick={refreshPlans} disabled={refreshing || loading}>
+                            <RefreshCw className={refreshing || loading ? "animate-spin" : ""} />
+                            {refreshing ? "Обновление..." : "Обновить"}
+                        </Button>
+                        <Button onClick={openCreateModal}><Plus />Новый тариф</Button>
+                    </>
+                }
             />
-        </div>
-    );
 
-}
-
-function Summary({
-    label,
-    value,
-}) {
-
-    return (
-        <div style={summaryItem}>
-            <div style={summaryValue}>
-                {value}
+            <div className="mb-5 grid gap-3">
+                {loading && <Alert>Загрузка тарифов...</Alert>}
+                {pageError && <Alert variant="error">{pageError}</Alert>}
             </div>
 
-            <div style={summaryLabel}>
-                {label}
+            <div className="mb-6 grid gap-3 sm:grid-cols-3">
+                <StatCard title="Всего тарифов" value={plans.length} description="Все созданные предложения" icon={WalletCards} />
+                <StatCard title="Активных" value={activePlans.length} description="Доступны для новых заказов" tone="success" />
+                <StatCard title="Отключено" value={disabledPlans.length} description="Скрыты от клиентов" tone={disabledPlans.length > 0 ? "warning" : "neutral"} />
             </div>
-        </div>
-    );
 
-}
-
-function PlanCard({
-    plan,
-    onEdit,
-    onDelete,
-}) {
-
-    return (
-        <div style={planCard}>
-            <div style={planHeader}>
-                <div>
-                    <h2 style={planTitle}>
-                        {plan.name}
-                    </h2>
-
-                    <div style={price}>
-                        {formatPrice(plan.price, plan.currency)}
-                    </div>
+            {!loading && plans.length === 0 ? (
+                <Card className="flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
+                    <WalletCards className="size-8 text-muted-foreground" />
+                    <div><div className="text-sm font-medium">Тарифы пока не добавлены</div><div className="mt-1 text-sm text-muted-foreground">Создайте первый тариф для оформления заказов.</div></div>
+                    <Button onClick={openCreateModal}><Plus />Новый тариф</Button>
+                </Card>
+            ) : (
+                <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                    {plans.map((plan) => (
+                        <PlanCard key={plan.id} plan={plan} onEdit={() => openEditModal(plan)} onDelete={() => deletePlan(plan)} />
+                    ))}
                 </div>
-
-                <span
-                    style={{
-                        ...badge,
-                        ...(plan.is_active ? successBadge : dangerBadge),
-                    }}
-                >
-                    {plan.is_active ? "Активен" : "Отключен"}
-                </span>
-            </div>
-
-            {plan.description && (
-                <p style={description}>
-                    {plan.description}
-                </p>
             )}
 
-            <div style={metrics}>
-                <Metric label="Срок" value={`${plan.duration_days} дн.`} />
-                <Metric label="Трафик" value={plan.traffic_gb > 0 ? `${plan.traffic_gb} GB` : "Без лимита"} />
-                <Metric label="Серверов" value={formatServerLimit(plan.server_limit)} />
-            </div>
-
-            <div style={actions}>
-                <button
-                    onClick={onEdit}
-                    style={secondaryButton}
-                >
-                    Редактировать
-                </button>
-
-                <button
-                    onClick={onDelete}
-                    style={dangerButton}
-                >
-                    Удалить
-                </button>
-            </div>
-        </div>
+            <PlanModal open={modalOpen} mode={modalMode} plan={selectedPlan} error={modalError} saving={saving} onClose={closeModal} onSave={savePlan} />
+        </AdminLayout>
     );
-
 }
 
-function Metric({
-    label,
-    value,
-}) {
-
+function PlanCard({ plan, onEdit, onDelete }) {
     return (
-        <div style={metricItem}>
-            <div style={metricValue}>
-                {value}
+        <Card className="flex min-w-0 flex-col p-5">
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <h2 className="m-0 truncate text-base font-semibold" title={plan.name}>{plan.name}</h2>
+                    <div className="mt-2 text-2xl font-semibold text-primary">{formatPrice(plan.price, plan.currency)}</div>
+                </div>
+                <Badge variant={plan.is_active ? "success" : "destructive"}>{plan.is_active ? "Активен" : "Отключен"}</Badge>
             </div>
 
-            <div style={metricLabel}>
-                {label}
+            <p className="mt-3 mb-0 min-h-10 text-sm leading-5 text-muted-foreground">
+                {plan.description || "Описание тарифа не указано."}
+            </p>
+
+            <div className="mt-5 grid grid-cols-3 divide-x divide-border rounded-md border border-border bg-muted/30">
+                <Metric icon={CalendarDays} label="Срок" value={`${plan.duration_days} дн.`} />
+                <Metric icon={Gauge} label="Трафик" value={plan.traffic_gb > 0 ? `${plan.traffic_gb} GB` : "Без лимита"} />
+                <Metric icon={Server} label="Серверы" value={formatServerLimit(plan.server_limit)} />
             </div>
+
+            <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+                <Button variant="outline" size="sm" onClick={onEdit}><Pencil />Редактировать</Button>
+                <Button variant="ghost" size="icon" onClick={onDelete} className="text-muted-foreground hover:text-destructive" title="Удалить тариф" aria-label="Удалить тариф"><Trash2 /></Button>
+            </div>
+        </Card>
+    );
+}
+
+function Metric({ icon: Icon, label, value }) {
+    return (
+        <div className="min-w-0 px-3 py-3 text-center">
+            <Icon className="mx-auto size-4 text-muted-foreground" />
+            <div className="mt-1 truncate text-sm font-semibold" title={value}>{value}</div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">{label}</div>
         </div>
     );
-
 }
 
 function formatPrice(price, currency) {
-
     const value = Number(price || 0);
-
-    if (value === 0) {
-        return "Бесплатно";
-    }
-
-    return `${value.toLocaleString("ru-RU")} ${currency || "RUB"}`;
-
+    return value === 0 ? "Бесплатно" : `${value.toLocaleString("ru-RU")} ${currency || "RUB"}`;
 }
 
 function formatServerLimit(value) {
-
     const count = Number(value || 1);
-
-    if (count === 1) {
-        return "1 сервер";
-    }
-
-    return `${count} сервера`;
-
+    return count === 1 ? "1 сервер" : `${count} сервера`;
 }
 
 function getAuthConfig() {
-
-    const token = localStorage.getItem("token");
-
-    return {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-    };
-
+    return { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
 }
 
 function getErrorMessage(error, fallback) {
-
     const detail = error?.response?.data?.detail;
-
-    if (typeof detail === "string") {
-        return detail;
-    }
-
-    if (Array.isArray(detail)) {
-        return detail
-            .map((item) => item?.msg)
-            .filter(Boolean)
-            .join(". ");
-    }
-
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");
     return error?.message || fallback;
-
 }
-
-const page = {
-    display: "flex",
-    minHeight: "100vh",
-    background: "#f5f7fb",
-    fontFamily: "Arial",
-};
-
-const main = {
-    flex: 1,
-};
-
-const content = {
-    padding: 30,
-};
-
-const loadingBox = {
-    padding: 40,
-    fontFamily: "Arial",
-};
-
-const pageHeader = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 20,
-    marginBottom: 20,
-};
-
-const title = {
-    margin: "0 0 8px",
-};
-
-const subtitle = {
-    margin: 0,
-    color: "#6b7280",
-};
-
-const headerActions = {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-};
-
-const summaryGrid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-    marginBottom: 20,
-};
-
-const summaryItem = {
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const summaryValue = {
-    fontSize: 26,
-    fontWeight: 700,
-    color: "#111827",
-};
-
-const summaryLabel = {
-    marginTop: 6,
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const grid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 16,
-};
-
-const planCard = {
-    display: "grid",
-    gap: 14,
-    padding: 18,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const planHeader = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-};
-
-const planTitle = {
-    margin: "0 0 6px",
-    fontSize: 20,
-};
-
-const price = {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: 700,
-};
-
-const description = {
-    margin: 0,
-    color: "#4b5563",
-    fontSize: 14,
-    lineHeight: 1.45,
-};
-
-const metrics = {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 10,
-};
-
-const metricItem = {
-    padding: 10,
-    borderRadius: 8,
-    background: "#f9fafb",
-};
-
-const metricValue = {
-    fontSize: 17,
-    fontWeight: 700,
-    color: "#111827",
-};
-
-const metricLabel = {
-    marginTop: 4,
-    color: "#6b7280",
-    fontSize: 12,
-};
-
-const actions = {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-};
-
-const badge = {
-    display: "inline-flex",
-    padding: "5px 9px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-};
-
-const successBadge = {
-    background: "#dcfce7",
-    color: "#166534",
-};
-
-const dangerBadge = {
-    background: "#fee2e2",
-    color: "#991b1b",
-};
-
-const primaryButton = {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 14,
-};
-
-const secondaryButton = {
-    padding: "10px 16px",
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    cursor: "pointer",
-    background: "#fff",
-    color: "#111827",
-    fontSize: 14,
-};
-
-const dangerButton = {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-    background: "#ef4444",
-    color: "#fff",
-    fontSize: 14,
-};
-
-const errorBox = {
-    marginBottom: 20,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};
-
-const emptyState = {
-    padding: 18,
-    borderRadius: 8,
-    background: "#fff",
-    color: "#6b7280",
-};

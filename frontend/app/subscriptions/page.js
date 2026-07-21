@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Copy, Link2, Loader2, QrCode, Search, UserRound } from "lucide-react";
 
-import Sidebar from "../../components/Sidebar";
-import Header from "../../components/Header";
+import AdminLayout from "../../components/AdminLayout";
 import ClientLinksModal from "../../components/ClientLinksModal";
-
-import { getMe } from "../../lib/auth";
+import PageHeading from "../../components/PageHeading";
+import { Alert } from "../../components/ui/alert";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 import api from "../../lib/api";
+import { getMe } from "../../lib/auth";
 
 export default function SubscriptionsPage() {
-
     const router = useRouter();
-
     const [user, setUser] = useState(null);
     const [query, setQuery] = useState("");
     const [results, setResults] = useState([]);
@@ -24,535 +27,184 @@ export default function SubscriptionsPage() {
     const [pageError, setPageError] = useState("");
 
     useEffect(() => {
-
         async function loadUser() {
-
             const me = await getMe();
-
             if (!me) {
                 router.replace("/login");
                 return;
             }
-
             setUser(me);
-
         }
-
         loadUser();
-
     }, [router]);
 
     async function searchSubscriptions(event) {
-
         event.preventDefault();
-
         const normalizedQuery = query.trim();
-
         if (!normalizedQuery) {
             setPageError("Введите имя клиента или псевдоним.");
             return;
         }
-
         setLoading(true);
         setSearched(false);
         setPageError("");
         setCopyStatus("");
-
         try {
-
             const me = await getMe();
-
             if (!me) {
                 router.replace("/login");
                 return;
             }
-
             setUser(me);
-
-            const response = await api.get(
-                `/clients/search/${encodeURIComponent(normalizedQuery)}`,
-                getAuthConfig(),
-            );
-
+            const response = await api.get(`/clients/search/${encodeURIComponent(normalizedQuery)}`, getAuthConfig());
             setResults(Array.isArray(response.data) ? response.data : []);
             setSearched(true);
-
         } catch (error) {
-
             setPageError(getErrorMessage(error, "Не удалось найти подписку."));
-
         } finally {
-
             setLoading(false);
-
         }
-
     }
 
     function logout() {
-
         localStorage.removeItem("token");
-
         router.replace("/login");
-
     }
 
     return (
-        <div style={page}>
-            <Sidebar />
+        <AdminLayout user={user} onLogout={logout}>
+            <PageHeading title="Подписки" description="Поиск VLESS, QR-кода и subscription URL клиента" />
 
-            <div style={main}>
-                <Header
-                    user={user}
-                    onLogout={logout}
-                />
-
-                <main style={content}>
-                    <div style={pageHeader}>
-                        <div>
-                            <h1 style={title}>
-                                Подписки
-                            </h1>
-
-                            <p style={subtitle}>
-                                VLESS, QR и subscription URL клиента.
-                            </p>
-                        </div>
-                    </div>
-
-                    <form
-                        onSubmit={searchSubscriptions}
-                        style={searchBar}
-                    >
-                        <input
-                            type="text"
+            <Card className="mb-5 p-4 sm:p-5">
+                <form onSubmit={searchSubscriptions} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <label className="relative block">
+                        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            type="search"
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder="Имя клиента, группа или комментарий"
-                            style={searchInput}
+                            className="pl-9"
+                            aria-label="Поиск подписки"
+                            autoFocus
                         />
+                    </label>
+                    <Button type="submit" disabled={loading} className="sm:min-w-28">
+                        {loading ? <Loader2 className="animate-spin" /> : <Search />}
+                        {loading ? "Поиск..." : "Найти"}
+                    </Button>
+                </form>
+                <p className="mt-3 mb-0 text-xs text-muted-foreground">Поиск выполняется сразу по всем подключённым 3X-UI серверам.</p>
+            </Card>
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            style={{
-                                ...primaryButton,
-                                cursor: loading ? "not-allowed" : "pointer",
-                                opacity: loading ? .7 : 1,
-                            }}
-                        >
-                            {loading ? "Поиск..." : "Найти"}
-                        </button>
-                    </form>
-
-                    {pageError && (
-                        <div style={errorBox}>
-                            {pageError}
-                        </div>
-                    )}
-
-                    {copyStatus && (
-                        <div style={successBox}>
-                            {copyStatus}
-                        </div>
-                    )}
-
-                    {searched && results.length === 0 && (
-                        <div style={emptyState}>
-                            Подписка не найдена.
-                        </div>
-                    )}
-
-                    {results.length > 0 && (
-                        <div style={resultsHeader}>
-                            Найдено: <b>{results.length}</b>
-                        </div>
-                    )}
-
-                    <div style={resultsList}>
-                        {results.map((client) => (
-                            <SubscriptionRow
-                                key={`${client.server_id}-${client.email}`}
-                                client={client}
-                                onOpenLinks={setSelectedClient}
-                                onCopy={setCopyStatus}
-                                onOpenClient={() => router.push(
-                                    `/clients?server=${client.server_id}&q=${encodeURIComponent(client.email)}`
-                                )}
-                            />
-                        ))}
-                    </div>
-                </main>
+            <div className="mb-5 grid gap-3">
+                {pageError && <Alert variant="error">{pageError}</Alert>}
+                {copyStatus && <Alert variant="success">{copyStatus}</Alert>}
             </div>
 
-            <ClientLinksModal
-                client={selectedClient}
-                onClose={() => setSelectedClient(null)}
-            />
-        </div>
-    );
+            {searched && results.length === 0 && (
+                <Card className="flex min-h-44 flex-col items-center justify-center gap-2 p-6 text-center">
+                    <Link2 className="size-8 text-muted-foreground" />
+                    <div className="text-sm font-medium">Подписка не найдена</div>
+                    <div className="text-sm text-muted-foreground">Проверьте имя клиента и повторите поиск.</div>
+                </Card>
+            )}
 
+            {results.length > 0 && (
+                <>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                        <h2 className="m-0 text-base font-semibold">Результаты</h2>
+                        <Badge variant="outline">Найдено: {results.length}</Badge>
+                    </div>
+                    <Card className="overflow-hidden">
+                        <div className="divide-y divide-border">
+                            {results.map((client) => (
+                                <SubscriptionRow
+                                    key={`${client.server_id}-${client.email}`}
+                                    client={client}
+                                    onOpenLinks={setSelectedClient}
+                                    onCopy={setCopyStatus}
+                                    onOpenClient={() => router.push(`/clients?server=${client.server_id}&q=${encodeURIComponent(client.email)}`)}
+                                />
+                            ))}
+                        </div>
+                    </Card>
+                </>
+            )}
+
+            {!searched && !loading && (
+                <div className="flex min-h-56 flex-col items-center justify-center text-center text-muted-foreground">
+                    <QrCode className="size-9" />
+                    <div className="mt-3 text-sm font-medium text-foreground">Найдите клиента</div>
+                    <div className="mt-1 max-w-md text-sm">Здесь можно открыть QR-код и скопировать ссылки для подключения.</div>
+                </div>
+            )}
+
+            <ClientLinksModal client={selectedClient} onClose={() => setSelectedClient(null)} />
+        </AdminLayout>
+    );
 }
 
-function SubscriptionRow({
-    client,
-    onOpenLinks,
-    onCopy,
-    onOpenClient,
-}) {
-
+function SubscriptionRow({ client, onOpenLinks, onCopy, onOpenClient }) {
     const hasLinks = Boolean(client.vless_url || client.subscription_url);
-
     return (
-        <div style={resultRow}>
-            <div style={clientInfo}>
-                <div style={clientName}>
-                    {client.email || "Без имени"}
+        <article className="grid gap-4 px-4 py-5 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+            <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="m-0 break-words text-base font-semibold">{client.email || "Без имени"}</h3>
+                    <Badge variant={client.enabled ? "success" : "destructive"}>{client.enabled ? "Активен" : "Отключен"}</Badge>
                 </div>
-
-                <div style={clientMeta}>
-                    {client.server}
-                    {" | "}
-                    {client.country}
-                    {" | "}
-                    {client.group || "Без группы"}
-                </div>
-
-                <div style={statusLine}>
-                    <span
-                        style={{
-                            ...badge,
-                            ...(client.enabled ? successBadge : dangerBadge),
-                        }}
-                    >
-                        {client.enabled ? "Активен" : "Отключен"}
-                    </span>
-
-                    <span>
-                        Окончание: <b>{formatExpiry(client.expiry)}</b>
-                    </span>
-                </div>
+                <div className="mt-1 text-sm text-muted-foreground">{client.server} · {client.country} · {client.group || "Без группы"}</div>
+                <div className="mt-2 text-xs text-muted-foreground">Окончание: <span className="font-medium text-foreground">{formatExpiry(client.expiry)}</span></div>
             </div>
 
-            <div style={actions}>
-                <button
-                    type="button"
-                    onClick={() => onOpenLinks(client)}
-                    disabled={!hasLinks}
-                    style={{
-                        ...primaryButton,
-                        background: hasLinks ? "#2563eb" : "#9ca3af",
-                        cursor: hasLinks ? "pointer" : "not-allowed",
-                    }}
-                >
-                    QR
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => copyText(
-                        client.subscription_url,
-                        "Subscription URL скопирован.",
-                        onCopy,
-                    )}
-                    disabled={!client.subscription_url}
-                    style={{
-                        ...secondaryButton,
-                        cursor: client.subscription_url ? "pointer" : "not-allowed",
-                        opacity: client.subscription_url ? 1 : .65,
-                    }}
-                >
-                    Copy Sub
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => copyText(
-                        client.vless_url,
-                        "VLESS ссылка скопирована.",
-                        onCopy,
-                    )}
-                    disabled={!client.vless_url}
-                    style={{
-                        ...secondaryButton,
-                        cursor: client.vless_url ? "pointer" : "not-allowed",
-                        opacity: client.vless_url ? 1 : .65,
-                    }}
-                >
-                    Copy VLESS
-                </button>
-
-                <button
-                    type="button"
-                    onClick={onOpenClient}
-                    style={secondaryButton}
-                >
-                    Клиент
-                </button>
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+                <Button type="button" size="sm" onClick={() => onOpenLinks(client)} disabled={!hasLinks}><QrCode />QR и ссылки</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => copyText(client.subscription_url, "Subscription URL скопирован.", onCopy)} disabled={!client.subscription_url}><Copy />Subscription</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => copyText(client.vless_url, "VLESS ссылка скопирована.", onCopy)} disabled={!client.vless_url}><Copy />VLESS</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={onOpenClient}><UserRound />Клиент</Button>
             </div>
-        </div>
+        </article>
     );
-
 }
 
 async function copyText(value, message, setStatus) {
-
     if (!value) {
         setTemporaryStatus(setStatus, "Ссылка недоступна.");
         return;
     }
-
-    try {
-        await navigator.clipboard.writeText(value);
-        setTemporaryStatus(setStatus, message);
-    } catch {
-        fallbackCopy(value);
-        setTemporaryStatus(setStatus, message);
-    }
-
+    try { await navigator.clipboard.writeText(value); } catch { fallbackCopy(value); }
+    setTemporaryStatus(setStatus, message);
 }
 
 function setTemporaryStatus(setStatus, message) {
-
     setStatus(message);
-
-    window.setTimeout(() => {
-        setStatus("");
-    }, 2200);
-
+    window.setTimeout(() => setStatus(""), 2200);
 }
 
 function fallbackCopy(value) {
-
     const textarea = document.createElement("textarea");
-
     textarea.value = value;
     textarea.style.position = "fixed";
     textarea.style.left = "-9999px";
-
     document.body.appendChild(textarea);
     textarea.focus();
     textarea.select();
-
     document.execCommand("copy");
     document.body.removeChild(textarea);
-
 }
 
 function getAuthConfig() {
-
-    const token = localStorage.getItem("token");
-
-    return {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-    };
-
+    return { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } };
 }
 
 function getErrorMessage(error, fallback) {
-
     const detail = error?.response?.data?.detail;
-
-    if (typeof detail === "string") {
-        return detail;
-    }
-
-    if (Array.isArray(detail)) {
-        return detail
-            .map((item) => item?.msg)
-            .filter(Boolean)
-            .join(". ");
-    }
-
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");
     return error?.message || fallback;
-
 }
 
 function formatExpiry(value) {
-
-    if (!value || value === 0) {
-        return "Без срока";
-    }
-
-    return new Date(value).toLocaleDateString("ru-RU");
-
+    return !value || value === 0 ? "Без срока" : new Date(value).toLocaleDateString("ru-RU");
 }
-
-const page = {
-    display: "flex",
-    minHeight: "100vh",
-    background: "#f5f7fb",
-    fontFamily: "Arial",
-};
-
-const main = {
-    flex: 1,
-};
-
-const content = {
-    padding: 30,
-};
-
-const pageHeader = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 20,
-    marginBottom: 22,
-};
-
-const title = {
-    margin: "0 0 8px",
-};
-
-const subtitle = {
-    margin: 0,
-    color: "#6b7280",
-};
-
-const searchBar = {
-    display: "flex",
-    gap: 12,
-    maxWidth: 900,
-    marginBottom: 18,
-};
-
-const searchInput = {
-    flex: 1,
-    minWidth: 0,
-    padding: 12,
-    borderRadius: 8,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    color: "#111827",
-    fontSize: 15,
-    outline: "none",
-};
-
-const resultsHeader = {
-    marginBottom: 12,
-    color: "#6b7280",
-    fontSize: 14,
-};
-
-const resultsList = {
-    display: "grid",
-    gap: 12,
-};
-
-const resultRow = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-    padding: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fff",
-};
-
-const clientInfo = {
-    minWidth: 260,
-    flex: 1,
-};
-
-const clientName = {
-    color: "#111827",
-    fontSize: 17,
-    fontWeight: 700,
-    overflowWrap: "anywhere",
-};
-
-const clientMeta = {
-    marginTop: 6,
-    color: "#6b7280",
-    fontSize: 14,
-};
-
-const statusLine = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-    marginTop: 10,
-    color: "#374151",
-    fontSize: 14,
-};
-
-const actions = {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-};
-
-const primaryButton = {
-    padding: "10px 14px",
-    border: "none",
-    borderRadius: 8,
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 14,
-};
-
-const secondaryButton = {
-    padding: "10px 14px",
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    cursor: "pointer",
-    fontSize: 14,
-};
-
-const badge = {
-    display: "inline-flex",
-    alignItems: "center",
-    minHeight: 24,
-    padding: "3px 8px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-};
-
-const successBadge = {
-    background: "#dcfce7",
-    color: "#166534",
-};
-
-const dangerBadge = {
-    background: "#fee2e2",
-    color: "#991b1b",
-};
-
-const errorBox = {
-    maxWidth: 900,
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};
-
-const successBox = {
-    maxWidth: 900,
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#ecfdf5",
-    color: "#047857",
-    fontSize: 14,
-};
-
-const emptyState = {
-    maxWidth: 900,
-    padding: 16,
-    borderRadius: 8,
-    background: "#fff",
-    color: "#6b7280",
-    fontSize: 14,
-};

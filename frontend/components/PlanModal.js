@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2, X } from "lucide-react";
+
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Input, Select, Textarea } from "./ui/input";
 
 export default function PlanModal({
     open,
@@ -11,9 +16,7 @@ export default function PlanModal({
     onClose,
     onSave,
 }) {
-
     const isEdit = mode === "edit";
-
     const [name, setName] = useState("");
     const [description, setDescription] = useState("");
     const [durationDays, setDurationDays] = useState("30");
@@ -24,10 +27,7 @@ export default function PlanModal({
     const [isActive, setIsActive] = useState(true);
 
     useEffect(() => {
-
-        if (!open) {
-            return;
-        }
+        if (!open) return;
 
         if (isEdit && plan) {
             setName(plan.name || "");
@@ -49,17 +49,12 @@ export default function PlanModal({
         setPrice("0");
         setCurrency("RUB");
         setIsActive(true);
-
     }, [open, isEdit, plan]);
 
-    if (!open) {
-        return null;
-    }
+    if (!open) return null;
 
     function submit(event) {
-
         event.preventDefault();
-
         onSave({
             name: name.trim(),
             description: description.trim(),
@@ -70,243 +65,103 @@ export default function PlanModal({
             currency: currency.trim().toUpperCase(),
             is_active: isActive,
         });
-
     }
 
     return (
-        <div style={overlay}>
+        <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-5"
+            onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}
+        >
             <form
                 onSubmit={submit}
-                style={modal}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="plan-modal-title"
+                className="max-h-[94vh] w-full overflow-y-auto rounded-t-lg bg-card shadow-2xl sm:max-w-2xl sm:rounded-lg"
             >
-                <h2 style={title}>
-                    {isEdit ? "Редактирование тарифа" : "Новый тариф"}
-                </h2>
-
-                <label style={label}>Название</label>
-                <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    required
-                    disabled={saving}
-                    style={input}
-                />
-
-                <label style={label}>Описание</label>
-                <textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    disabled={saving}
-                    rows={3}
-                    style={textarea}
-                />
-
-                <div style={grid}>
-                    <label style={field}>
-                        <span style={label}>Срок, дней</span>
-                        <input
-                            type="number"
-                            min="0"
-                            value={durationDays}
-                            onChange={(event) => setDurationDays(event.target.value)}
-                            required
-                            disabled={saving}
-                            style={input}
-                        />
-                    </label>
-
-                    <label style={field}>
-                        <span style={label}>Трафик, GB</span>
-                        <input
-                            type="number"
-                            min="0"
-                            value={trafficGb}
-                            onChange={(event) => setTrafficGb(event.target.value)}
-                            required
-                            disabled={saving}
-                            style={input}
-                        />
-                    </label>
-                </div>
-
-                <label style={label}>Количество VPN-серверов</label>
-                <input
-                    type="number"
-                    min="1"
-                    value={serverLimit}
-                    onChange={(event) => setServerLimit(event.target.value)}
-                    required
-                    disabled={saving}
-                    style={input}
-                />
-
-                <div style={grid}>
-                    <label style={field}>
-                        <span style={label}>Цена</span>
-                        <input
-                            type="number"
-                            min="0"
-                            value={price}
-                            onChange={(event) => setPrice(event.target.value)}
-                            required
-                            disabled={saving}
-                            style={input}
-                        />
-                    </label>
-
-                    <label style={field}>
-                        <span style={label}>Валюта</span>
-                        <select
-                            value={currency}
-                            onChange={(event) => setCurrency(event.target.value)}
-                            disabled={saving}
-                            style={input}
-                        >
-                            <option value="RUB">RUB</option>
-                            <option value="USD">USD</option>
-                            <option value="EUR">EUR</option>
-                            <option value="KZT">KZT</option>
-                        </select>
-                    </label>
-                </div>
-
-                <label style={checkboxRow}>
-                    <input
-                        type="checkbox"
-                        checked={isActive}
-                        onChange={(event) => setIsActive(event.target.checked)}
-                        disabled={saving}
-                    />
-                    Активен для продажи
-                </label>
-
-                {error && (
-                    <div style={errorBox}>
-                        {error}
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4 sm:px-6">
+                    <div>
+                        <h2 id="plan-modal-title" className="m-0 text-lg font-semibold">
+                            {isEdit ? "Редактирование тарифа" : "Новый тариф"}
+                        </h2>
+                        <p className="mt-1 mb-0 text-sm text-muted-foreground">
+                            Цена, срок и количество доступных VPN-серверов
+                        </p>
                     </div>
-                )}
+                    <Button type="button" variant="ghost" size="icon" onClick={onClose} disabled={saving} aria-label="Закрыть" title="Закрыть">
+                        <X />
+                    </Button>
+                </div>
 
-                <div style={actions}>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        disabled={saving}
-                        style={secondaryButton}
-                    >
-                        Отмена
-                    </button>
+                <div className="grid gap-5 px-5 py-5 sm:px-6">
+                    <Field label="Название">
+                        <Input value={name} onChange={(event) => setName(event.target.value)} required disabled={saving} autoFocus />
+                    </Field>
 
-                    <button
-                        type="submit"
-                        disabled={saving}
-                        style={primaryButton}
-                    >
+                    <Field label="Описание" optional>
+                        <Textarea value={description} onChange={(event) => setDescription(event.target.value)} disabled={saving} rows={3} />
+                    </Field>
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <Field label="Срок, дней">
+                            <Input type="number" min="0" value={durationDays} onChange={(event) => setDurationDays(event.target.value)} required disabled={saving} />
+                        </Field>
+                        <Field label="Трафик, GB">
+                            <Input type="number" min="0" value={trafficGb} onChange={(event) => setTrafficGb(event.target.value)} required disabled={saving} />
+                        </Field>
+                        <Field label="VPN-серверов">
+                            <Input type="number" min="1" value={serverLimit} onChange={(event) => setServerLimit(event.target.value)} required disabled={saving} />
+                        </Field>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Цена">
+                            <Input type="number" min="0" value={price} onChange={(event) => setPrice(event.target.value)} required disabled={saving} />
+                        </Field>
+                        <Field label="Валюта">
+                            <Select value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={saving}>
+                                <option value="RUB">RUB</option>
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="KZT">KZT</option>
+                            </Select>
+                        </Field>
+                    </div>
+
+                    <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-border bg-muted/40 px-3 text-sm font-medium">
+                        <input
+                            type="checkbox"
+                            checked={isActive}
+                            onChange={(event) => setIsActive(event.target.checked)}
+                            disabled={saving}
+                            className="size-4 accent-primary"
+                        />
+                        Активен для продажи
+                    </label>
+
+                    {error && <Alert variant="error">{error}</Alert>}
+                </div>
+
+                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
+                    <Button type="submit" disabled={saving}>
+                        {saving && <Loader2 className="animate-spin" />}
                         {saving ? "Сохранение..." : "Сохранить"}
-                    </button>
+                    </Button>
                 </div>
             </form>
         </div>
     );
-
 }
 
-const overlay = {
-    position: "fixed",
-    inset: 0,
-    zIndex: 1000,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    background: "rgba(0,0,0,.45)",
-};
-
-const modal = {
-    width: "100%",
-    maxWidth: 560,
-    padding: 24,
-    borderRadius: 10,
-    background: "#fff",
-    boxShadow: "0 10px 35px rgba(0,0,0,.25)",
-};
-
-const title = {
-    marginTop: 0,
-    marginBottom: 20,
-};
-
-const label = {
-    display: "block",
-    marginBottom: 6,
-    fontSize: 14,
-    fontWeight: 700,
-};
-
-const field = {
-    display: "block",
-};
-
-const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    marginBottom: 15,
-    padding: 10,
-    border: "1px solid #d1d5db",
-    borderRadius: 7,
-    fontSize: 14,
-    background: "#fff",
-};
-
-const textarea = {
-    ...input,
-    resize: "vertical",
-    minHeight: 82,
-};
-
-const grid = {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-};
-
-const checkboxRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 2,
-    fontSize: 14,
-};
-
-const errorBox = {
-    marginTop: 18,
-    padding: 12,
-    borderRadius: 8,
-    background: "#fee2e2",
-    color: "#991b1b",
-    fontSize: 14,
-};
-
-const actions = {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 24,
-};
-
-const primaryButton = {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: 7,
-    background: "#2563eb",
-    color: "#fff",
-    cursor: "pointer",
-};
-
-const secondaryButton = {
-    padding: "10px 16px",
-    border: "1px solid #d1d5db",
-    borderRadius: 7,
-    background: "#fff",
-    color: "#111827",
-    cursor: "pointer",
-};
+function Field({ label, optional = false, children }) {
+    return (
+        <label className="grid gap-1.5">
+            <span className="text-sm font-medium">
+                {label}
+                {optional && <span className="ml-1 font-normal text-muted-foreground">(необязательно)</span>}
+            </span>
+            {children}
+        </label>
+    );
+}
