@@ -1,36 +1,23 @@
-# Node
+# Node and Next.js
 frontend/node_modules/
-backend/__pycache__/
-backend/.pytest_cache/
+frontend/.next/
+frontend/.npm-cache/
+npm-debug.log*
 
 # Python
+__pycache__/
 *.pyc
 *.pyo
-__pycache__/
+backend/.pytest_cache/
 
-# Env
+# Environment and local data
 .env
-
-# Database
 *.db
-
-# Logs
 *.log
 
-# Next
-frontend/.next/
-
-# IDE
+# Editors and operating systems
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
-frontend/node_modules/
-frontend/.next/
-frontend/node_modules/
-frontend/.next/
-backend/__pycache__/
-*.pyc
-.env
+*.lnk
