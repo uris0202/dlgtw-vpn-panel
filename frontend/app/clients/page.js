@@ -407,12 +407,13 @@ function ClientsContent() {
                             variant="outline"
                             onClick={refreshClients}
                             disabled={refreshing}
+                            className="flex-1 sm:flex-none"
                         >
                             <RefreshCw className={refreshing ? "animate-spin" : ""} />
                             {refreshing ? "Обновление..." : "Обновить"}
                         </Button>
 
-                        <Button type="button" onClick={openCreateModal}>
+                        <Button type="button" onClick={openCreateModal} className="flex-1 sm:flex-none">
                             <Plus />
                             Новый клиент
                         </Button>
@@ -433,7 +434,7 @@ function ClientsContent() {
                 <Alert variant="success" className="mb-4">{pageMessage}</Alert>
             )}
 
-            <Card className="mb-4 p-4">
+            <Card className="mb-4 p-3 sm:p-4">
                 <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_220px]">
                     <label className="relative block">
                         <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -572,24 +573,3 @@ function fallbackCopy(value) {
     document.body.removeChild(textarea);
 
 }
-
-const serverSelect = {
-    minWidth: 180,
-    padding: "10px 12px",
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#fff",
-    color: "#111827",
-    fontSize: 14,
-};
-
-const filterControl = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: 12,
-    borderRadius: 8,
-    border: "1px solid #ccc",
-    fontSize: 15,
-    outline: "none",
-    background: "#fff",
-};

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { selectServersForPlan } from "../lib/serverSelection";
+import useDialogLifecycle from "../lib/useDialogLifecycle";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Input, Select } from "./ui/input";
@@ -77,6 +78,8 @@ export default function ClientModal({
         setEnabled(true);
 
     }, [open, isEdit, client, serverOptions, currentServerId, defaultSettings]);
+
+    useDialogLifecycle(open, onClose, saving);
 
     if (!open) {
         return null;
@@ -167,25 +170,31 @@ export default function ClientModal({
     }
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4">
+        <div
+            className="fixed inset-0 z-[100] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-5"
+            onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}
+        >
             <form
                 onSubmit={handleSubmit}
-                className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-card shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="client-modal-title"
+                className="max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-lg border border-border bg-card shadow-2xl sm:max-w-2xl sm:rounded-lg"
             >
-                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4">
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-4 sm:px-5">
                     <div className="flex min-w-0 items-start gap-3">
                         <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#eff4ff] text-primary">
                             <UserPlus className="size-4" />
                         </div>
                         <div>
-                            <h2 className="m-0 text-base font-semibold">{isEdit ? "Редактирование клиента" : "Новый клиент"}</h2>
+                            <h2 id="client-modal-title" className="m-0 text-base font-semibold">{isEdit ? "Редактирование клиента" : "Новый клиент"}</h2>
                             <p className="mt-1 mb-0 text-xs text-muted-foreground">Параметры доступа к VPN и срок действия</p>
                         </div>
                     </div>
                     <Button type="button" variant="ghost" size="icon" onClick={onClose} disabled={saving} title="Закрыть" aria-label="Закрыть"><X /></Button>
                 </div>
 
-                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                <div className="grid gap-4 px-4 py-5 sm:grid-cols-2 sm:px-5">
                     <Field label="Имя клиента / псевдоним" className="sm:col-span-2">
                         <Input type="text" value={email} onChange={(event) => setEmail(event.target.value)} disabled={saving} required autoComplete="off" placeholder="Например: testing" />
                     </Field>
@@ -278,9 +287,9 @@ export default function ClientModal({
                     {error && <Alert variant="error" className="sm:col-span-2">{error}</Alert>}
                 </div>
 
-                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4">
-                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
-                    <Button type="submit" disabled={saving}><Save />{saving ? "Сохранение..." : "Сохранить"}</Button>
+                <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-border bg-card px-4 py-4 sm:flex sm:justify-end sm:px-5">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="w-full sm:w-auto">Отмена</Button>
+                    <Button type="submit" disabled={saving} className="w-full sm:w-auto"><Save />{saving ? "Сохранение..." : "Сохранить"}</Button>
                 </div>
             </form>
         </div>
@@ -357,69 +366,3 @@ function isServerDisabled(serverId, selectedServerIds, selectedPlanServerLimit) 
     );
 
 }
-
-const label = {
-    display: "block",
-    marginBottom: 5,
-    fontSize: 14,
-    fontWeight: 600,
-};
-
-const input = {
-    width: "100%",
-    boxSizing: "border-box",
-    marginBottom: 15,
-    padding: 10,
-    border: "1px solid #ccc",
-    borderRadius: 6,
-    fontSize: 14,
-};
-
-const groupBox = {
-    display: "grid",
-    gap: 8,
-    marginBottom: 15,
-    padding: 12,
-    border: "1px solid #d1d5db",
-    borderRadius: 8,
-    background: "#f9fafb",
-};
-
-const checkboxRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 14,
-};
-
-const emptyGroups = {
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const fieldHint = {
-    marginTop: -8,
-    marginBottom: 15,
-    color: "#6b7280",
-    fontSize: 13,
-};
-
-const primaryButton = {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: 6,
-    cursor: "pointer",
-    background: "#2563eb",
-    color: "#fff",
-    fontSize: 14,
-};
-
-const secondaryButton = {
-    padding: "10px 16px",
-    border: "1px solid #d1d5db",
-    borderRadius: 6,
-    cursor: "pointer",
-    background: "#fff",
-    color: "#111827",
-    fontSize: 14,
-};

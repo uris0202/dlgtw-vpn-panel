@@ -227,12 +227,13 @@ export default function Servers() {
                             variant="outline"
                             onClick={refreshServers}
                             disabled={refreshing}
+                            className="flex-1 sm:flex-none"
                         >
                             <RefreshCw className={refreshing ? "animate-spin" : ""} />
                             {refreshing ? "Обновление..." : "Обновить"}
                         </Button>
 
-                        <Button type="button" onClick={openCreateModal}>
+                        <Button type="button" onClick={openCreateModal} className="flex-1 sm:flex-none">
                             <Plus />
                             Новый сервер
                         </Button>
@@ -263,7 +264,7 @@ export default function Servers() {
 
                         return (
                             <Card key={server.id} className="min-w-0 overflow-hidden">
-                                <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+                                <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
                                     <div className="flex min-w-0 items-start gap-3">
                                         <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#eff4ff] text-primary">
                                             <ServerIcon className="size-5" />
@@ -274,7 +275,7 @@ export default function Servers() {
                                         </div>
                                     </div>
 
-                                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                                    <div className="flex shrink-0 flex-wrap gap-1.5 sm:justify-end">
                                         <Badge variant={server.enabled ? "success" : "destructive"}>
                                             {server.enabled ? "Активен" : "Отключен"}
                                         </Badge>
@@ -307,19 +308,19 @@ export default function Servers() {
                                     <Stat label="Отключено" value={server.disabled_clients ?? 0} />
                                 </div>
 
-                                <div className="flex flex-wrap items-center gap-2 p-4 sm:p-5">
-                                    <Button onClick={() => router.push(`/clients?server=${server.id}`)}>
+                                <div className="grid grid-cols-2 gap-2 p-4 sm:flex sm:flex-wrap sm:items-center sm:p-5">
+                                    <Button onClick={() => router.push(`/clients?server=${server.id}`)} className="w-full sm:w-auto">
                                         <Users />
                                         Клиенты
                                     </Button>
-                                    <Button variant="outline" onClick={() => openEditModal(server)}>
+                                    <Button variant="outline" onClick={() => openEditModal(server)} className="w-full sm:w-auto">
                                         <Pencil />
                                         Изменить
                                     </Button>
                                     <Button
                                         variant="ghost"
                                         onClick={() => deleteServer(server)}
-                                        className="ml-auto text-destructive hover:bg-[#fef3f2] hover:text-destructive"
+                                        className="col-span-2 w-full text-destructive hover:bg-[#fef3f2] hover:text-destructive sm:ml-auto sm:w-auto"
                                     >
                                         <Trash2 />
                                         Удалить

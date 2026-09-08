@@ -233,15 +233,15 @@ function AccountRow({ account, actionKey, onCopy, onOpen, onOrders, onReset, onD
                 )}
             </div>
 
-            <div className="flex flex-wrap items-start gap-2 xl:max-w-96 xl:justify-end">
-                <Button size="sm" onClick={onOpen}><ExternalLink />Открыть ЛК</Button>
-                <Button variant="outline" size="sm" onClick={onCopy}><Copy />Ссылка</Button>
-                <Button variant="outline" size="sm" onClick={onOrders}><ReceiptText />Заказы</Button>
-                <Button variant="outline" size="sm" onClick={onReset} disabled={accountBusy || !credentialsConfigured} title={!credentialsConfigured ? "Сначала клиент должен настроить вход" : "Сбросить логин и пароль"}><KeyRound />Сбросить вход</Button>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-start xl:max-w-96 xl:justify-end">
+                <Button size="sm" onClick={onOpen} className="w-full sm:w-auto"><ExternalLink />Открыть ЛК</Button>
+                <Button variant="outline" size="sm" onClick={onCopy} className="w-full sm:w-auto"><Copy />Ссылка</Button>
+                <Button variant="outline" size="sm" onClick={onOrders} className="w-full sm:w-auto"><ReceiptText />Заказы</Button>
+                <Button variant="outline" size="sm" onClick={onReset} disabled={accountBusy || !credentialsConfigured} title={!credentialsConfigured ? "Сначала клиент должен настроить вход" : "Сбросить логин и пароль"} className="w-full sm:w-auto"><KeyRound />Сбросить вход</Button>
                 {account.vpn_enabled === false ? (
-                    <Button size="sm" onClick={onEnable} disabled={accountBusy}><Power className={actionKey === `enable-${account.account_token}` ? "animate-pulse" : ""} />{actionKey === `enable-${account.account_token}` ? "Включение..." : "Включить VPN"}</Button>
+                    <Button size="sm" onClick={onEnable} disabled={accountBusy} className="col-span-2 w-full sm:w-auto"><Power className={actionKey === `enable-${account.account_token}` ? "animate-pulse" : ""} />{actionKey === `enable-${account.account_token}` ? "Включение..." : "Включить VPN"}</Button>
                 ) : (
-                    <Button variant="destructive" size="sm" onClick={onDisable} disabled={accountBusy}><PowerOff />{actionKey === `disable-${account.account_token}` ? "Отключение..." : "Отключить VPN"}</Button>
+                    <Button variant="destructive" size="sm" onClick={onDisable} disabled={accountBusy} className="col-span-2 w-full sm:w-auto"><PowerOff />{actionKey === `disable-${account.account_token}` ? "Отключение..." : "Отключить VPN"}</Button>
                 )}
             </div>
         </article>

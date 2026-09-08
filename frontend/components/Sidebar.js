@@ -72,6 +72,19 @@ export default function Sidebar() {
         return () => document.removeEventListener("keydown", handleKeyDown);
     }, []);
 
+    useEffect(() => {
+        if (!open) {
+            return undefined;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [open]);
+
     return (
         <>
             <button
@@ -80,6 +93,7 @@ export default function Sidebar() {
                 className="fixed top-3 left-3 z-50 inline-flex size-10 items-center justify-center rounded-md border border-[#33363d] bg-[#191a1e] text-white shadow-sm lg:hidden"
                 aria-label={open ? "Закрыть меню" : "Открыть меню"}
                 aria-expanded={open}
+                aria-controls="admin-sidebar"
                 title={open ? "Закрыть меню" : "Открыть меню"}
             >
                 {open ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -95,8 +109,9 @@ export default function Sidebar() {
             )}
 
             <aside
+                id="admin-sidebar"
                 className={cn(
-                    "fixed inset-y-0 left-0 z-40 flex h-screen w-[248px] flex-col border-r border-[#2d2f35] bg-[#191a1e] text-[#f5f5f6] transition-transform duration-200 lg:sticky lg:top-0 lg:translate-x-0",
+                    "fixed inset-y-0 left-0 z-40 flex h-[100dvh] w-[min(280px,86vw)] flex-col border-r border-[#2d2f35] bg-[#191a1e] text-[#f5f5f6] transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:w-[248px] lg:translate-x-0",
                     open ? "translate-x-0" : "-translate-x-full",
                 )}
             >

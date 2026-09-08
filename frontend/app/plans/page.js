@@ -121,11 +121,11 @@ export default function PlansPage() {
                 description="Планы продаж, стоимость и доступное количество VPN-серверов"
                 actions={
                     <>
-                        <Button variant="outline" onClick={refreshPlans} disabled={refreshing || loading}>
+                        <Button variant="outline" onClick={refreshPlans} disabled={refreshing || loading} className="flex-1 sm:flex-none">
                             <RefreshCw className={refreshing || loading ? "animate-spin" : ""} />
                             {refreshing ? "Обновление..." : "Обновить"}
                         </Button>
-                        <Button onClick={openCreateModal}><Plus />Новый тариф</Button>
+                        <Button onClick={openCreateModal} className="flex-1 sm:flex-none"><Plus />Новый тариф</Button>
                     </>
                 }
             />
@@ -181,9 +181,9 @@ function PlanCard({ plan, onEdit, onDelete }) {
                 <Metric icon={Server} label="Серверы" value={formatServerLimit(plan.server_limit)} />
             </div>
 
-            <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
-                <Button variant="outline" size="sm" onClick={onEdit}><Pencil />Редактировать</Button>
-                <Button variant="ghost" size="icon" onClick={onDelete} className="text-muted-foreground hover:text-destructive" title="Удалить тариф" aria-label="Удалить тариф"><Trash2 /></Button>
+            <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-t border-border pt-4 sm:flex sm:justify-end">
+                <Button variant="outline" size="sm" onClick={onEdit} className="w-full sm:w-auto"><Pencil />Редактировать</Button>
+                <Button variant="ghost" size="sm" onClick={onDelete} className="text-muted-foreground hover:text-destructive sm:size-8 sm:px-0" title="Удалить тариф" aria-label="Удалить тариф"><Trash2 /><span className="sm:hidden">Удалить</span></Button>
             </div>
         </Card>
     );

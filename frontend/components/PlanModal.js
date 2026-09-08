@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 
+import useDialogLifecycle from "../lib/useDialogLifecycle";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Input, Select, Textarea } from "./ui/input";
@@ -51,6 +52,8 @@ export default function PlanModal({
         setIsActive(true);
     }, [open, isEdit, plan]);
 
+    useDialogLifecycle(open, onClose, saving);
+
     if (!open) return null;
 
     function submit(event) {
@@ -77,7 +80,7 @@ export default function PlanModal({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="plan-modal-title"
-                className="max-h-[94vh] w-full overflow-y-auto rounded-t-lg bg-card shadow-2xl sm:max-w-2xl sm:rounded-lg"
+                className="max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-lg bg-card shadow-2xl sm:max-w-2xl sm:rounded-lg"
             >
                 <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4 sm:px-6">
                     <div>
@@ -142,9 +145,9 @@ export default function PlanModal({
                     {error && <Alert variant="error">{error}</Alert>}
                 </div>
 
-                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
-                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
-                    <Button type="submit" disabled={saving}>
+                <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-border bg-card px-5 py-4 sm:flex sm:justify-end sm:px-6">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="w-full sm:w-auto">Отмена</Button>
+                    <Button type="submit" disabled={saving} className="w-full sm:w-auto">
                         {saving && <Loader2 className="animate-spin" />}
                         {saving ? "Сохранение..." : "Сохранить"}
                     </Button>

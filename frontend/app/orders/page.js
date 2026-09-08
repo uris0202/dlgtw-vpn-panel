@@ -279,18 +279,18 @@ function OrderRow({ order, actionLoading, onEdit, onDelete, onMarkPaid, onRetryA
                 {order.note && <div className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{order.note}</div>}
             </div>
 
-            <div className="flex flex-wrap items-start gap-2 xl:max-w-64 xl:justify-end">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-start xl:max-w-64 xl:justify-end">
                 {order.status === "paid" && order.activation_error && (
-                    <Button size="sm" onClick={onRetryActivation} disabled={actionLoading}><RotateCcw className={actionLoading ? "animate-spin" : ""} />{actionLoading ? "Обработка..." : "Повторить выдачу"}</Button>
+                    <Button size="sm" onClick={onRetryActivation} disabled={actionLoading} className="col-span-2 w-full sm:w-auto"><RotateCcw className={actionLoading ? "animate-spin" : ""} />{actionLoading ? "Обработка..." : "Повторить выдачу"}</Button>
                 )}
                 {order.status !== "paid" && order.status !== "access" && (
-                    <Button size="sm" onClick={onMarkPaid} disabled={actionLoading}><Check />{actionLoading ? "Обработка..." : "Оплачен"}</Button>
+                    <Button size="sm" onClick={onMarkPaid} disabled={actionLoading} className="w-full sm:w-auto"><Check />{actionLoading ? "Обработка..." : "Оплачен"}</Button>
                 )}
                 {order.status !== "canceled" && order.status !== "access" && (
-                    <Button variant="outline" size="sm" onClick={onCancel} disabled={actionLoading}><XCircle />Отменить</Button>
+                    <Button variant="outline" size="sm" onClick={onCancel} disabled={actionLoading} className="w-full sm:w-auto"><XCircle />Отменить</Button>
                 )}
-                <Button variant="outline" size="sm" onClick={onEdit} disabled={actionLoading}><Pencil />Изменить</Button>
-                <Button variant="ghost" size="icon" onClick={onDelete} disabled={actionLoading} className="text-muted-foreground hover:text-destructive" title="Удалить заказ" aria-label="Удалить заказ"><Trash2 /></Button>
+                <Button variant="outline" size="sm" onClick={onEdit} disabled={actionLoading} className="w-full sm:w-auto"><Pencil />Изменить</Button>
+                <Button variant="ghost" size="sm" onClick={onDelete} disabled={actionLoading} className="w-full text-muted-foreground hover:text-destructive sm:size-8 sm:px-0" title="Удалить заказ" aria-label="Удалить заказ"><Trash2 /><span className="sm:hidden">Удалить</span></Button>
             </div>
         </article>
     );

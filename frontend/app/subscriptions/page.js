@@ -158,11 +158,11 @@ function SubscriptionRow({ client, onOpenLinks, onCopy, onOpenClient }) {
                 <div className="mt-2 text-xs text-muted-foreground">Окончание: <span className="font-medium text-foreground">{formatExpiry(client.expiry)}</span></div>
             </div>
 
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-                <Button type="button" size="sm" onClick={() => onOpenLinks(client)} disabled={!hasLinks}><QrCode />QR и ссылки</Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => copyText(client.subscription_url, "Subscription URL скопирован.", onCopy)} disabled={!client.subscription_url}><Copy />Subscription</Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => copyText(client.vless_url, "VLESS ссылка скопирована.", onCopy)} disabled={!client.vless_url}><Copy />VLESS</Button>
-                <Button type="button" variant="ghost" size="sm" onClick={onOpenClient}><UserRound />Клиент</Button>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
+                <Button type="button" size="sm" onClick={() => onOpenLinks(client)} disabled={!hasLinks} className="w-full sm:w-auto"><QrCode />QR и ссылки</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => copyText(client.subscription_url, "Subscription URL скопирован.", onCopy)} disabled={!client.subscription_url} className="w-full sm:w-auto"><Copy />Subscription</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => copyText(client.vless_url, "VLESS ссылка скопирована.", onCopy)} disabled={!client.vless_url} className="w-full sm:w-auto"><Copy />VLESS</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={onOpenClient} className="w-full sm:w-auto"><UserRound />Клиент</Button>
             </div>
         </article>
     );

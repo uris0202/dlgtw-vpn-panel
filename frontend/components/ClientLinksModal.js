@@ -3,18 +3,21 @@
 import { useRef, useState } from "react";
 import { Copy, Download, X } from "lucide-react";
 
+import useDialogLifecycle from "../lib/useDialogLifecycle";
 import QRCodeCanvas from "./QRCodeCanvas";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/input";
 
 export default function ClientLinksModal({ client, onClose }) {
+    useDialogLifecycle(Boolean(client), onClose);
+
     if (!client) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-5" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-            <div role="dialog" aria-modal="true" aria-labelledby="links-modal-title" className="max-h-[96vh] w-full overflow-y-auto rounded-t-lg bg-card shadow-2xl sm:max-w-4xl sm:rounded-lg">
-                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4 sm:px-6">
+            <div role="dialog" aria-modal="true" aria-labelledby="links-modal-title" className="max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-lg bg-card shadow-2xl sm:max-w-4xl sm:rounded-lg">
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-4 sm:px-6">
                     <div className="min-w-0">
                         <h2 id="links-modal-title" className="m-0 text-lg font-semibold">Ссылки клиента</h2>
                         <div className="mt-1 truncate text-sm text-muted-foreground">{client.email}</div>
@@ -27,8 +30,8 @@ export default function ClientLinksModal({ client, onClose }) {
                     <LinkSection title="Subscription URL" value={client.subscription_url} copyMessage="Subscription URL скопирован." />
                 </div>
 
-                <div className="sticky bottom-0 flex justify-end border-t border-border bg-card px-5 py-4 sm:px-6">
-                    <Button type="button" variant="outline" onClick={onClose}>Закрыть</Button>
+                <div className="sticky bottom-0 border-t border-border bg-card px-4 py-4 sm:flex sm:justify-end sm:px-6">
+                    <Button type="button" variant="outline" onClick={onClose} className="w-full sm:w-auto">Закрыть</Button>
                 </div>
             </div>
         </div>
@@ -41,13 +44,13 @@ function LinkSection({ title, value, copyMessage }) {
     const fileName = `${title.toLowerCase().replace(/\s+/g, "-")}-qr.png`;
 
     return (
-        <section className="grid gap-5 px-5 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+        <section className="grid gap-5 px-4 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
             <div className="min-w-0">
                 <h3 className="m-0 text-base font-semibold">{title}</h3>
                 <Textarea readOnly value={value || "Ссылка недоступна"} className="mt-3 min-h-24 font-mono text-xs leading-5" />
-                <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" onClick={() => copyText(value, copyMessage, setStatus)} disabled={!value}><Copy />Копировать</Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => downloadQr(qrRef.current, fileName, setStatus)} disabled={!value}><Download />Скачать QR</Button>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    <Button type="button" size="sm" onClick={() => copyText(value, copyMessage, setStatus)} disabled={!value} className="w-full sm:w-auto"><Copy />Копировать</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => downloadQr(qrRef.current, fileName, setStatus)} disabled={!value} className="w-full sm:w-auto"><Download />Скачать QR</Button>
                 </div>
                 {status && <Alert variant="success" className="mt-3">{status}</Alert>}
             </div>

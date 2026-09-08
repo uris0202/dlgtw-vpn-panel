@@ -14,6 +14,7 @@ import ClientLinksModal from "./ClientLinksModal";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { cn } from "../lib/utils";
 
 export default function ClientTable({
     clients,
@@ -31,7 +32,30 @@ export default function ClientTable({
                 <Alert variant="success" className="mb-3">{copyStatus}</Alert>
             )}
 
-            <div className="overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div className="grid gap-3 lg:hidden">
+                {clients.length === 0 ? (
+                    <div className="rounded-lg border border-border bg-card px-4 py-12 text-center text-sm text-muted-foreground">
+                        Клиенты не найдены.
+                    </div>
+                ) : (
+                    clients.map((client) => (
+                        <MobileClientCard
+                            key={client.email}
+                            client={client}
+                            accountLinkLoading={accountLinkLoadingEmail === client.email}
+                            showAccountAction={Boolean(onCreateAccountAccess)}
+                            onOpenLinks={() => setLinksClient(client)}
+                            onCopyVless={() => copyText(client.vless_url, "VLESS ссылка скопирована.", setCopyStatus)}
+                            onCopySubscription={() => copyText(client.subscription_url, "Subscription URL скопирован.", setCopyStatus)}
+                            onCreateAccount={() => onCreateAccountAccess?.(client)}
+                            onEdit={() => onEdit(client)}
+                            onDelete={() => onDelete(client.email)}
+                        />
+                    ))
+                )}
+            </div>
+
+            <div className="hidden overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] lg:block">
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[920px] border-collapse text-sm">
                         <thead className="bg-[#f8f9fb] text-left text-xs font-semibold text-muted-foreground">
@@ -117,6 +141,129 @@ export default function ClientTable({
 
             <ClientLinksModal client={linksClient} onClose={() => setLinksClient(null)} />
         </>
+    );
+}
+
+function MobileClientCard({
+    client,
+    accountLinkLoading,
+    showAccountAction,
+    onOpenLinks,
+    onCopyVless,
+    onCopySubscription,
+    onCreateAccount,
+    onEdit,
+    onDelete,
+}) {
+    return (
+        <article className="overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <div className="flex items-start justify-between gap-3 px-4 py-4">
+                <div className="min-w-0">
+                    <h2 className="m-0 break-words text-base font-semibold text-foreground">
+                        {client.email}
+                    </h2>
+                    {client.comment && (
+                        <p className="mt-1 mb-0 break-words text-xs text-muted-foreground">
+                            {client.comment}
+                        </p>
+                    )}
+                </div>
+                <Badge variant={client.enabled ? "success" : "secondary"}>
+                    {client.enabled ? "Активен" : "Отключен"}
+                </Badge>
+            </div>
+
+            <div className="grid grid-cols-3 divide-x divide-border border-y border-border bg-[#f8f9fb]">
+                <MobileDetail label="Группа" value={client.group || "Без группы"} />
+                <MobileDetail label="Трафик" value={formatTraffic(client.traffic)} />
+                <MobileDetail label="Окончание" value={formatExpiry(client.expiry)} />
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 p-3 min-[360px]:grid-cols-2 sm:grid-cols-3">
+                <MobileActionButton
+                    label="QR и ссылки"
+                    title="QR и ссылки"
+                    disabled={!client.vless_url && !client.subscription_url}
+                    onClick={onOpenLinks}
+                    icon={QrCode}
+                    primary
+                />
+                <MobileActionButton
+                    label="VLESS"
+                    title="Копировать VLESS"
+                    disabled={!client.vless_url}
+                    onClick={onCopyVless}
+                    icon={KeyRound}
+                />
+                <MobileActionButton
+                    label="Подписка"
+                    title="Копировать Subscription URL"
+                    disabled={!client.subscription_url}
+                    onClick={onCopySubscription}
+                    icon={Copy}
+                />
+                {showAccountAction && (
+                    <MobileActionButton
+                        label={accountLinkLoading ? "Получение..." : "Кабинет"}
+                        title="Получить ссылку на личный кабинет"
+                        disabled={accountLinkLoading}
+                        onClick={onCreateAccount}
+                        icon={UserRoundCog}
+                        loading={accountLinkLoading}
+                    />
+                )}
+                <MobileActionButton
+                    label="Изменить"
+                    title="Изменить клиента"
+                    onClick={onEdit}
+                    icon={Pencil}
+                />
+                <MobileActionButton
+                    label="Удалить"
+                    title="Удалить клиента"
+                    onClick={onDelete}
+                    icon={Trash2}
+                    destructive
+                />
+            </div>
+        </article>
+    );
+}
+
+function MobileDetail({ label, value }) {
+    return (
+        <div className="min-w-0 px-2 py-3 text-center">
+            <div className="truncate text-xs font-semibold text-foreground" title={value}>{value}</div>
+            <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{label}</div>
+        </div>
+    );
+}
+
+function MobileActionButton({
+    label,
+    title,
+    icon: Icon,
+    destructive = false,
+    primary = false,
+    loading = false,
+    ...props
+}) {
+    return (
+        <Button
+            type="button"
+            variant={primary ? "default" : "outline"}
+            size="sm"
+            title={title}
+            aria-label={title}
+            className={cn(
+                "h-10 w-full min-w-0 justify-start px-2.5",
+                destructive && "border-[#fecdca] text-destructive hover:bg-[#fef3f2] hover:text-destructive",
+            )}
+            {...props}
+        >
+            <Icon className={loading ? "animate-pulse" : ""} />
+            <span>{label}</span>
+        </Button>
     );
 }
 

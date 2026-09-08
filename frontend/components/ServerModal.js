@@ -7,6 +7,7 @@ import {
     X,
 } from "lucide-react";
 
+import useDialogLifecycle from "../lib/useDialogLifecycle";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -54,6 +55,8 @@ export default function ServerModal({
         setEnabled(true);
     }, [open, isEdit, server]);
 
+    useDialogLifecycle(open, onClose, saving);
+
     if (!open) {
         return null;
     }
@@ -81,18 +84,24 @@ export default function ServerModal({
     }
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4">
+        <div
+            className="fixed inset-0 z-[100] flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-5"
+            onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}
+        >
             <form
                 onSubmit={submit}
-                className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-lg border border-border bg-card shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="server-modal-title"
+                className="max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-lg border border-border bg-card shadow-2xl sm:max-w-xl sm:rounded-lg"
             >
-                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4">
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-4 sm:px-5">
                     <div className="flex min-w-0 items-start gap-3">
                         <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#eff4ff] text-primary">
                             <Server className="size-4" />
                         </div>
                         <div>
-                            <h2 className="m-0 text-base font-semibold">
+                            <h2 id="server-modal-title" className="m-0 text-base font-semibold">
                                 {isEdit ? "Редактирование сервера" : "Новый сервер"}
                             </h2>
                             <p className="mt-1 mb-0 text-xs text-muted-foreground">Подключение и учётные данные 3X-UI</p>
@@ -104,7 +113,7 @@ export default function ServerModal({
                     </Button>
                 </div>
 
-                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                <div className="grid gap-4 px-4 py-5 sm:grid-cols-2 sm:px-5">
                     <Field label="Название">
                         <Input value={name} onChange={(event) => setName(event.target.value)} required disabled={saving} />
                     </Field>
@@ -138,9 +147,9 @@ export default function ServerModal({
                     {error && <Alert variant="error" className="sm:col-span-2">{error}</Alert>}
                 </div>
 
-                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4">
-                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
-                    <Button type="submit" disabled={saving}>
+                <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-border bg-card px-4 py-4 sm:flex sm:justify-end sm:px-5">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="w-full sm:w-auto">Отмена</Button>
+                    <Button type="submit" disabled={saving} className="w-full sm:w-auto">
                         <Save />
                         {saving ? "Сохранение..." : "Сохранить"}
                     </Button>

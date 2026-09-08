@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Server, X } from "lucide-react";
 
 import { selectServersForPlan } from "../lib/serverSelection";
+import useDialogLifecycle from "../lib/useDialogLifecycle";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -64,6 +65,8 @@ export default function OrderModal({
         setNote("");
         setFormError("");
     }, [open, isEdit, order, plans, servers]);
+
+    useDialogLifecycle(open, onClose, saving);
 
     if (!open) return null;
 
@@ -151,7 +154,7 @@ export default function OrderModal({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="order-modal-title"
-                className="max-h-[96vh] w-full overflow-y-auto rounded-t-lg bg-card shadow-2xl sm:max-w-3xl sm:rounded-lg"
+                className="max-h-[96dvh] w-full overflow-y-auto overscroll-contain rounded-t-lg bg-card shadow-2xl sm:max-w-3xl sm:rounded-lg"
             >
                 <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-5 py-4 sm:px-6">
                     <div>
@@ -241,9 +244,9 @@ export default function OrderModal({
                     {(error || formError) && <Alert variant="error">{error || formError}</Alert>}
                 </div>
 
-                <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-card px-5 py-4 sm:px-6">
-                    <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Отмена</Button>
-                    <Button type="submit" disabled={saving}>
+                <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t border-border bg-card px-5 py-4 sm:flex sm:justify-end sm:px-6">
+                    <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="w-full sm:w-auto">Отмена</Button>
+                    <Button type="submit" disabled={saving} className="w-full sm:w-auto">
                         {saving && <Loader2 className="animate-spin" />}
                         {saving ? "Сохранение..." : "Сохранить"}
                     </Button>
