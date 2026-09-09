@@ -111,7 +111,7 @@ export default function Sidebar() {
             <aside
                 id="admin-sidebar"
                 className={cn(
-                    "fixed inset-y-0 left-0 z-40 flex h-[100dvh] w-[min(280px,86vw)] flex-col border-r border-[#2d2f35] bg-[#191a1e] text-[#f5f5f6] transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:w-[248px] lg:translate-x-0",
+                    "fixed inset-y-0 left-0 z-40 flex h-[100dvh] w-[min(280px,86vw)] flex-col border-r border-[#2d2f35] bg-[#191a1e] text-[#f5f5f6] transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:w-[248px] lg:self-start lg:translate-x-0",
                     open ? "translate-x-0" : "-translate-x-full",
                 )}
             >
