@@ -142,6 +142,11 @@ class Order(Base, TimestampMixin):
         nullable=True,
     )
 
+    payment_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     activated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

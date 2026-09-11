@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
     Check,
+    CheckCircle2,
     Copy,
     CreditCard,
     ExternalLink,
@@ -19,7 +20,11 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import api from "../../lib/api";
-import { selectServersForPlan } from "../../lib/serverSelection";
+import {
+    getServerSelectionMessage,
+    getServerSelectionStatus,
+    selectServersForPlan,
+} from "../../lib/serverSelection";
 
 const ACCOUNT_TOKEN_STORAGE_KEY = "dlgtw_checkout_account_token";
 const REQUEST_ID_STORAGE_KEY = "dlgtw_checkout_request_id";
@@ -39,12 +44,57 @@ export default function BuyPage() {
     const [accountRestoring, setAccountRestoring] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [paymentSubmitting, setPaymentSubmitting] = useState(false);
     const [error, setError] = useState("");
 
     useEffect(() => { loadCheckout(); }, []);
 
+    useEffect(() => {
+        if (
+            !order?.id
+            || !order.account_token
+            || !order.payment_notified_at
+            || order.status !== "pending"
+        ) {
+            return undefined;
+        }
+
+        let active = true;
+        const checkStatus = async () => {
+            try {
+                const response = await api.get(
+                    `/public/account/${order.account_token}/orders/${order.id}/status`,
+                );
+
+                if (!active) return;
+
+                setOrder((current) => (
+                    current?.id === response.data.id
+                        ? { ...current, ...response.data }
+                        : current
+                ));
+            } catch {
+                // The next interval retries while the payment page stays open.
+            }
+        };
+        const intervalId = window.setInterval(checkStatus, 10000);
+
+        return () => {
+            active = false;
+            window.clearInterval(intervalId);
+        };
+    }, [order?.account_token, order?.id, order?.payment_notified_at, order?.status]);
+
     const selectedPlan = useMemo(() => plans.find((plan) => String(plan.id) === String(selectedPlanId)), [plans, selectedPlanId]);
     const selectedServerNames = useMemo(() => servers.filter((server) => selectedServerIds.includes(Number(server.id))).map((server) => server.name), [servers, selectedServerIds]);
+    const serverSelection = useMemo(
+        () => getServerSelectionStatus(
+            selectedServerIds,
+            servers,
+            selectedPlan?.server_limit,
+        ),
+        [selectedPlan, selectedServerIds, servers],
+    );
 
     async function loadCheckout() {
         setError("");
@@ -104,8 +154,10 @@ export default function BuyPage() {
     }
 
     function toggleServer(serverId) {
+        if (serverSelection.allServersRequired && serverSelection.isComplete) return;
+
         const normalizedServerId = Number(serverId);
-        const limit = Number(selectedPlan?.server_limit || 1);
+        const limit = serverSelection.requiredCount;
         setSelectedServerIds((current) => {
             if (current.includes(normalizedServerId)) return current.filter((item) => item !== normalizedServerId);
             if (current.length >= limit) return limit === 1 ? [normalizedServerId] : current;
@@ -120,7 +172,11 @@ export default function BuyPage() {
             setError("Выберите тариф.");
             return;
         }
-        if (selectedServerIds.length !== Number(selectedPlan.server_limit || 1)) {
+        if (!serverSelection.hasEnoughServers) {
+            setError(`Для тарифа нужно серверов: ${serverSelection.requiredCount}. Сейчас доступно: ${serverSelection.availableCount}.`);
+            return;
+        }
+        if (!serverSelection.isComplete) {
             setError(`По выбранному тарифу нужно выбрать серверов: ${selectedPlan.server_limit}.`);
             return;
         }
@@ -153,19 +209,42 @@ export default function BuyPage() {
         window.setTimeout(() => setCopyStatus(""), 1800);
     }
 
+    async function notifyPayment() {
+        if (!order?.id || !order.account_token || paymentSubmitting) return;
+
+        setPaymentSubmitting(true);
+        setError("");
+
+        try {
+            const response = await api.post(
+                `/public/account/${order.account_token}/orders/${order.id}/payment-notification`,
+            );
+            setOrder(response.data);
+        } catch (error) {
+            setError(getErrorMessage(error, "Не удалось сообщить об оплате."));
+        } finally {
+            setPaymentSubmitting(false);
+        }
+    }
+
     if (loading) {
         return <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground"><Loader2 className="mr-2 size-4 animate-spin" />Загрузка тарифов...</div>;
     }
 
     if (order) {
+        const paymentConfirmed = order.status === "paid";
+        const paymentCanceled = order.status === "canceled";
+
         return (
             <div className="min-h-screen bg-background">
                 <PublicHeader panelName={settings?.panel_name || "DLGTW VPN"} />
                 <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:py-10">
                     <div className="mb-6 flex items-start gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#ecfdf3] text-[#067647]"><Check className="size-5" /></div>
-                        <div><h1 className="m-0 text-2xl font-semibold">Заказ #{order.id} создан</h1><p className="mt-1.5 mb-0 text-sm text-muted-foreground">Переведите указанную сумму. После подтверждения платежа доступ будет выдан автоматически.</p></div>
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-[#ecfdf3] text-[#067647]">{paymentConfirmed ? <CheckCircle2 className="size-5" /> : <Check className="size-5" />}</div>
+                        <div><h1 className="m-0 text-2xl font-semibold">{paymentConfirmed ? `Оплата заказа #${order.id} подтверждена` : `Заказ #${order.id} создан`}</h1><p className="mt-1.5 mb-0 text-sm text-muted-foreground">{paymentConfirmed ? "VPN-доступ выдан. Ссылки находятся в личном кабинете." : "Переведите указанную сумму и сообщите об оплате."}</p></div>
                     </div>
+
+                    {error && <Alert variant="error" className="mb-5">{error}</Alert>}
 
                     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
                         <Card className="overflow-hidden">
@@ -177,6 +256,23 @@ export default function BuyPage() {
                                 {order.payment_recipient && <div className="text-sm text-muted-foreground">Получатель: <span className="font-medium text-foreground">{order.payment_recipient}</span></div>}
                                 {order.payment_instructions && <Alert>{order.payment_instructions}</Alert>}
                                 {order.support_contact && <div className="text-sm text-muted-foreground">Поддержка: <span className="font-medium text-foreground">{order.support_contact}</span></div>}
+                            </div>
+                            <div className="border-t border-border p-5">
+                                {paymentConfirmed ? (
+                                    <Alert variant="success">Оплата подтверждена. Откройте личный кабинет, чтобы получить ссылки подключения.</Alert>
+                                ) : paymentCanceled ? (
+                                    <Alert variant="error">Заказ отменён. Обратитесь в поддержку, если перевод уже выполнен.</Alert>
+                                ) : order.payment_notified_at ? (
+                                    <Alert variant="success">Сообщение об оплате отправлено. Ожидайте подтверждения администратора.</Alert>
+                                ) : (
+                                    <div className="grid gap-3">
+                                        <p className="m-0 text-sm text-muted-foreground">Нажмите после того, как перевод будет выполнен.</p>
+                                        <Button type="button" size="lg" onClick={notifyPayment} disabled={paymentSubmitting} className="w-full sm:w-auto">
+                                            {paymentSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                                            {paymentSubmitting ? "Отправка..." : "Я оплатил"}
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </Card>
 
@@ -203,7 +299,13 @@ export default function BuyPage() {
         );
     }
 
-    const submitDisabled = saving || accountRestoring || plans.length === 0;
+    const submitDisabled = (
+        saving
+        || accountRestoring
+        || plans.length === 0
+        || !serverSelection.hasEnoughServers
+        || !serverSelection.isComplete
+    );
 
     return (
         <div className="min-h-screen bg-background">
@@ -240,18 +342,25 @@ export default function BuyPage() {
                             <div className="grid gap-2 sm:grid-cols-2">
                                 {servers.map((server) => {
                                     const selected = selectedServerIds.includes(Number(server.id));
-                                    const limit = Number(selectedPlan?.server_limit || 1);
-                                    const disabled = limit > 1 && selectedServerIds.length >= limit && !selected;
+                                    const selectionLocked = serverSelection.allServersRequired && serverSelection.isComplete;
+                                    const disabled = selectionLocked || (
+                                        serverSelection.selectedCount >= serverSelection.requiredCount
+                                        && !selected
+                                    );
                                     return (
-                                        <label key={server.id} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
-                                            <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary" />
+                                        <label key={server.id} className={`flex min-h-12 items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] ${selectionLocked ? "cursor-default" : disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
+                                            <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary disabled:opacity-100" />
                                             <ServerIcon className="size-4 text-muted-foreground" />
                                             <span className="min-w-0"><span className="block truncate font-medium">{server.name}</span><span className="block truncate text-xs text-muted-foreground">{server.country}</span></span>
                                         </label>
                                     );
                                 })}
                             </div>
-                            {selectedPlan && <div className="mt-3 text-xs text-muted-foreground">Выбрано {selectedServerIds.length} из {selectedPlan.server_limit} серверов.</div>}
+                            {selectedPlan && (
+                                <div className={`mt-3 text-xs ${serverSelection.hasEnoughServers && serverSelection.isComplete ? "text-muted-foreground" : "text-destructive"}`}>
+                                    {getServerSelectionMessage(serverSelection)}
+                                </div>
+                            )}
                         </CheckoutSection>
 
                         <CheckoutSection number="3" title="Данные клиента" last>

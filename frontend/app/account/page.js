@@ -68,10 +68,10 @@ export default function AccountLoginPage() {
         >
             <form onSubmit={submit} className="grid gap-4">
                 <Field label="Логин" icon={UserRound}>
-                    <Input value={login} onChange={(event) => setLogin(event.target.value)} autoComplete="username" className="pl-9" required autoFocus />
+                    <Input value={login} onChange={(event) => setLogin(event.target.value)} minLength={3} maxLength={100} autoComplete="username" className="pl-9" required autoFocus />
                 </Field>
                 <Field label="Пароль" icon={LockKeyhole}>
-                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="pl-9" required />
+                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} maxLength={72} autoComplete="current-password" className="pl-9" required />
                 </Field>
                 {error && <Alert variant="error">{error}</Alert>}
                 <Button type="submit" size="lg" disabled={loading} className="w-full">

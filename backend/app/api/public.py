@@ -1,4 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from datetime import timezone
+import logging
 from types import SimpleNamespace
 
 from fastapi import APIRouter
@@ -17,6 +20,8 @@ from app.db.deps import get_db
 from app.auth.account import clear_account_session_cookie
 from app.auth.account import get_current_account
 from app.auth.account import set_account_session_cookie
+from app.core.config import settings as app_settings
+from app.core.request import get_client_ip
 from app.schemas.order import OrderCreate
 from app.services.client_service import ClientService
 from app.services.order_service import OrderService
@@ -34,12 +39,26 @@ router = APIRouter(
     tags=["Public"],
 )
 
+logger = logging.getLogger(__name__)
+
 account_login_limiter = RateLimiter(
     limit=12,
     window_seconds=600,
 )
 public_order_limiter = RateLimiter(
-    limit=20,
+    limit=app_settings.PUBLIC_ORDER_RATE_LIMIT,
+    window_seconds=app_settings.PUBLIC_ORDER_RATE_WINDOW_SECONDS,
+)
+account_credentials_limiter = RateLimiter(
+    limit=10,
+    window_seconds=600,
+)
+account_renew_limiter = RateLimiter(
+    limit=6,
+    window_seconds=3600,
+)
+payment_notification_limiter = RateLimiter(
+    limit=5,
     window_seconds=3600,
 )
 
@@ -53,23 +72,23 @@ class PublicOrderCreate(BaseModel):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     plan_id: int
-    server_ids: list[int]
+    server_ids: list[int] = Field(min_length=1, max_length=20)
 
 
 class PublicRenewOrderCreate(BaseModel):
     plan_id: int
-    server_ids: list[int]
+    server_ids: list[int] = Field(min_length=1, max_length=20)
 
 
 class PublicAccountLogin(BaseModel):
-    login: str
-    password: str
+    login: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=1, max_length=72)
 
 
 class PublicAccountCredentials(BaseModel):
-    login: str
-    password: str
-    current_password: str = ""
+    login: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=8, max_length=72)
+    current_password: str = Field(default="", max_length=72)
 
 
 @router.get("/checkout")
@@ -97,12 +116,23 @@ def create_public_order(
     existing_order = service.get_by_public_request_id(request_id)
 
     if existing_order is not None:
+        if not is_same_public_order_request(existing_order, payload):
+            raise HTTPException(
+                status_code=409,
+                detail="Идентификатор запроса уже использован.",
+            )
+
         return build_payment_response(db, existing_order)
 
     if not public_order_limiter.allow(get_client_ip(request)):
         raise HTTPException(
             status_code=429,
             detail="Слишком много заявок. Попробуйте позже.",
+            headers={
+                "Retry-After": str(
+                    app_settings.PUBLIC_ORDER_RATE_WINDOW_SECONDS
+                ),
+            },
         )
 
     client_email = payload.client_email.strip()
@@ -166,6 +196,7 @@ def login_public_account(
         raise HTTPException(
             status_code=429,
             detail="Слишком много попыток входа. Попробуйте через 10 минут.",
+            headers={"Retry-After": "600"},
         )
 
     order = OrderService(db).login_to_account(
@@ -210,10 +241,18 @@ def get_session_account(
 @router.patch("/account/session/credentials")
 def update_session_account_credentials(
     payload: PublicAccountCredentials,
+    request: Request,
     response: Response,
     account=Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
+    enforce_rate_limit(
+        account_credentials_limiter,
+        f"credentials:{account.account_token}:{get_client_ip(request)}",
+        600,
+        "Слишком много попыток изменения данных входа.",
+    )
+
     return update_account_credentials_response(
         db,
         account,
@@ -225,14 +264,50 @@ def update_session_account_credentials(
 @router.post("/account/session/renew")
 def create_session_renew_order(
     payload: PublicRenewOrderCreate,
+    request: Request,
     background_tasks: BackgroundTasks,
     account=Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
+    enforce_rate_limit(
+        account_renew_limiter,
+        f"renew:{account.account_token}:{get_client_ip(request)}",
+        3600,
+        "Слишком много заказов на продление. Попробуйте позже.",
+    )
+
     return create_renew_order_response(
         db,
         account,
         payload,
+        background_tasks,
+    )
+
+
+@router.get("/account/session/orders/{order_id}/status")
+def get_session_order_status(
+    order_id: int,
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    order = get_account_order(db, account, order_id)
+
+    return build_order_status_response(order)
+
+
+@router.post("/account/session/orders/{order_id}/payment-notification")
+def notify_session_order_payment(
+    order_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    return notify_order_payment_response(
+        db,
+        account,
+        order_id,
+        request,
         background_tasks,
     )
 
@@ -242,15 +317,7 @@ def get_public_account(
     account_token: str,
     db: Session = Depends(get_db),
 ):
-
-    service = OrderService(db)
-    anchor_order = service.get_by_account_token(account_token)
-
-    if anchor_order is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Личный кабинет не найден.",
-        )
+    anchor_order = get_public_anchor_order(db, account_token)
 
     ensure_activation_access(anchor_order)
 
@@ -261,6 +328,7 @@ def get_public_account(
 def update_public_account_credentials(
     account_token: str,
     payload: PublicAccountCredentials,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ):
@@ -275,6 +343,13 @@ def update_public_account_credentials(
         )
 
     ensure_activation_access(anchor_order)
+
+    enforce_rate_limit(
+        account_credentials_limiter,
+        f"credentials:{account_token}:{get_client_ip(request)}",
+        600,
+        "Слишком много попыток изменения данных входа.",
+    )
 
     return update_account_credentials_response(
         db,
@@ -288,6 +363,7 @@ def update_public_account_credentials(
 def create_public_renew_order(
     account_token: str,
     payload: PublicRenewOrderCreate,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
@@ -303,10 +379,50 @@ def create_public_renew_order(
 
     ensure_activation_access(anchor_order)
 
+    enforce_rate_limit(
+        account_renew_limiter,
+        f"renew:{account_token}:{get_client_ip(request)}",
+        3600,
+        "Слишком много заказов на продление. Попробуйте позже.",
+    )
+
     return create_renew_order_response(
         db,
         anchor_order,
         payload,
+        background_tasks,
+    )
+
+
+@router.get("/account/{account_token}/orders/{order_id}/status")
+def get_public_order_status(
+    account_token: str,
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    anchor_order = get_public_anchor_order(db, account_token)
+    ensure_activation_access(anchor_order)
+    order = get_account_order(db, anchor_order, order_id)
+
+    return build_order_status_response(order)
+
+
+@router.post("/account/{account_token}/orders/{order_id}/payment-notification")
+def notify_public_order_payment(
+    account_token: str,
+    order_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    anchor_order = get_public_anchor_order(db, account_token)
+    ensure_activation_access(anchor_order)
+
+    return notify_order_payment_response(
+        db,
+        anchor_order,
+        order_id,
+        request,
         background_tasks,
     )
 
@@ -408,24 +524,103 @@ def create_renew_order_response(
     return build_payment_response(db, order)
 
 
+def notify_order_payment_response(
+    db,
+    anchor_order,
+    order_id,
+    request,
+    background_tasks,
+):
+    order = get_account_order(
+        db,
+        anchor_order,
+        order_id,
+        for_update=True,
+    )
+
+    if order.status == "paid":
+        return build_payment_response(db, order)
+
+    if order.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="По этому заказу нельзя отправить уведомление об оплате.",
+        )
+
+    if order.payment_notified_at is None:
+        enforce_rate_limit(
+            payment_notification_limiter,
+            f"payment:{anchor_order.account_token}:{order.id}:{get_client_ip(request)}",
+            3600,
+            "Слишком много уведомлений об оплате. Попробуйте позже.",
+        )
+        order.payment_notified_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(order)
+        TelegramNotificationService.queue_payment_notification(
+            background_tasks,
+            SettingsService(db).get(),
+            order,
+        )
+
+    return build_payment_response(db, order)
+
+
+def get_public_anchor_order(db, account_token):
+    anchor_order = OrderService(db).get_by_account_token(account_token)
+
+    if anchor_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Личный кабинет не найден.",
+        )
+
+    return anchor_order
+
+
+def get_account_order(
+    db,
+    anchor_order,
+    order_id,
+    for_update=False,
+):
+    service = OrderService(db)
+    order = (
+        service.get_for_update(order_id)
+        if for_update
+        else service.get(order_id)
+    )
+
+    if (
+        order is None
+        or order.account_token != anchor_order.account_token
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Заказ не найден.",
+        )
+
+    return order
+
+
+def build_order_status_response(order):
+    return {
+        "id": order.id,
+        "status": order.status,
+        "paid_at": order.paid_at,
+        "payment_notified_at": order.payment_notified_at,
+        "activated_at": order.activated_at,
+        "activation_error": order.activation_error,
+        "activated_server_ids": order.activated_server_ids,
+    }
+
+
 def ensure_activation_access(anchor_order):
     if anchor_order.account_password_hash:
         raise HTTPException(
             status_code=401,
             detail="Ссылка активации уже использована. Войдите по логину и паролю.",
         )
-
-
-def get_client_ip(request):
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()[:64]
-
-    if request.client:
-        return request.client.host[:64]
-
-    return "unknown"
 
 
 def validate_order_choice(db, plan_id, raw_server_ids):
@@ -440,17 +635,23 @@ def validate_order_choice(db, plan_id, raw_server_ids):
 
     server_ids = normalize_server_ids(raw_server_ids)
 
-    if len(server_ids) != plan.server_limit:
-        raise HTTPException(
-            status_code=400,
-            detail=f"По выбранному тарифу нужно выбрать серверов: {plan.server_limit}.",
-        )
-
     enabled_server_ids = {
         server.id
         for server in ServerService(db).get_all()
         if server.enabled
     }
+
+    if len(enabled_server_ids) < plan.server_limit:
+        raise HTTPException(
+            status_code=400,
+            detail="Для выбранного тарифа недостаточно доступных VPN-серверов.",
+        )
+
+    if len(server_ids) != plan.server_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"По выбранному тарифу нужно выбрать серверов: {plan.server_limit}.",
+        )
 
     if any(server_id not in enabled_server_ids for server_id in server_ids):
         raise HTTPException(
@@ -475,6 +676,10 @@ def build_payment_response(db, order):
         "amount": order.amount,
         "currency": order.currency,
         "status": order.status,
+        "paid_at": order.paid_at,
+        "payment_notified_at": order.payment_notified_at,
+        "activated_at": order.activated_at,
+        "activation_error": order.activation_error,
         "payment_phone": settings.payment_phone,
         "payment_recipient": settings.payment_recipient,
         "payment_instructions": settings.payment_instructions,
@@ -609,8 +814,12 @@ def build_subscription(
         else:
             item.update(client)
 
-    except Exception as error:
-        item["error"] = str(error)
+    except Exception:
+        logger.exception(
+            "Unable to build public subscription for server_id=%s",
+            server.id,
+        )
+        item["error"] = "Не удалось получить данные с VPN-сервера."
     finally:
         close_xui(xui)
 
@@ -740,6 +949,7 @@ def serialize_order(order):
         "status": order.status,
         "note": order.note,
         "paid_at": order.paid_at,
+        "payment_notified_at": order.payment_notified_at,
         "activated_at": order.activated_at,
         "activation_error": order.activation_error,
         "activated_server_ids": order.activated_server_ids,
@@ -795,3 +1005,25 @@ def normalize_server_ids(values):
             result.append(value)
 
     return result
+
+
+def is_same_public_order_request(order, payload):
+    return (
+        order.client_email.strip() == payload.client_email.strip()
+        and order.customer_contact.strip() == payload.customer_contact.strip()
+        and order.plan_id == payload.plan_id
+        and set(get_order_server_ids(order)) == set(
+            normalize_server_ids(payload.server_ids)
+        )
+    )
+
+
+def enforce_rate_limit(limiter, key, retry_after, detail):
+    if limiter.allow(key):
+        return
+
+    raise HTTPException(
+        status_code=429,
+        detail=detail,
+        headers={"Retry-After": str(retry_after)},
+    )

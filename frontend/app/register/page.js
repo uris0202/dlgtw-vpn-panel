@@ -47,13 +47,13 @@ export default function RegisterPage() {
         >
             <form onSubmit={register} className="grid gap-4">
                 <Field label="Email" icon={Mail}>
-                    <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" autoComplete="username" className="pl-9" required autoFocus />
+                    <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" autoComplete="username" className="pl-9" maxLength={255} required autoFocus />
                 </Field>
                 <Field label="Пароль" icon={LockKeyhole}>
-                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength="6" autoComplete="new-password" className="pl-9" required />
+                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} maxLength={72} autoComplete="new-password" className="pl-9" required />
                 </Field>
                 <Field label="Повторите пароль" icon={LockKeyhole}>
-                    <Input type="password" value={passwordRepeat} onChange={(event) => setPasswordRepeat(event.target.value)} minLength="6" autoComplete="new-password" className="pl-9" required />
+                    <Input type="password" value={passwordRepeat} onChange={(event) => setPasswordRepeat(event.target.value)} minLength={8} maxLength={72} autoComplete="new-password" className="pl-9" required />
                 </Field>
                 {error && <Alert variant="error">{error}</Alert>}
                 <Button type="submit" size="lg" disabled={loading} className="w-full">
@@ -74,6 +74,7 @@ function getErrorMessage(error, fallback) {
     if (typeof detail === "string") {
         if (detail === "Email already exists") return "Пользователь с таким email уже существует.";
         if (detail === "Registration is closed") return "Регистрация закрыта. Войдите под существующим аккаунтом.";
+        if (detail === "Too many registration attempts") return "Слишком много попыток регистрации. Попробуйте позже.";
         return detail;
     }
     if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");

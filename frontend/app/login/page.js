@@ -41,10 +41,10 @@ export default function LoginPage() {
         >
             <form onSubmit={login} className="grid gap-4">
                 <Field label="Email" icon={Mail}>
-                    <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" autoComplete="username" className="pl-9" required autoFocus />
+                    <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@example.com" autoComplete="username" className="pl-9" maxLength={255} required autoFocus />
                 </Field>
                 <Field label="Пароль" icon={LockKeyhole}>
-                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="pl-9" required />
+                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="pl-9" maxLength={72} required />
                 </Field>
                 {error && <Alert variant="error">{error}</Alert>}
                 <Button type="submit" size="lg" disabled={loading} className="w-full">
@@ -67,7 +67,11 @@ function Field({ label, icon: Icon, children }) {
 
 function getErrorMessage(error, fallback) {
     const detail = error?.response?.data?.detail;
-    if (typeof detail === "string") return detail === "Invalid credentials" ? "Неверный логин или пароль" : detail;
+    if (typeof detail === "string") {
+        if (detail === "Invalid credentials") return "Неверный логин или пароль";
+        if (detail === "Too many login attempts") return "Слишком много попыток входа. Попробуйте через 10 минут.";
+        return detail;
+    }
     if (Array.isArray(detail)) return detail.map((item) => item?.msg).filter(Boolean).join(". ");
     return error?.message || fallback;
 }

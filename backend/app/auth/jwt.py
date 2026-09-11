@@ -1,5 +1,6 @@
 from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
 
 from jose import jwt
 
@@ -15,7 +16,9 @@ def create_access_token(
 
     payload = data.copy()
 
-    payload["exp"] = datetime.utcnow() + timedelta(
+    now = datetime.now(timezone.utc)
+    payload["iat"] = now
+    payload["exp"] = now + timedelta(
         minutes=(
             expires_minutes
             if expires_minutes is not None

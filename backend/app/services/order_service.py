@@ -14,6 +14,11 @@ from app.services.server_service import ServerService
 from app.services.settings_service import SettingsService
 
 
+dummy_account_password_hash = hash_password(
+    "DLGTW account timing check password"
+)
+
+
 class OrderService:
 
     def __init__(self, db: Session):
@@ -104,11 +109,17 @@ class OrderService:
 
     def login_to_account(self, account_login: str, password: str):
         order = self.get_by_account_login(account_login)
-
-        if order is None or not verify_password(
+        password_hash = (
+            order.account_password_hash
+            if order is not None
+            else dummy_account_password_hash
+        )
+        password_valid = verify_password(
             password,
-            order.account_password_hash,
-        ):
+            password_hash,
+        )
+
+        if order is None or not password_valid:
             return None
 
         return order
@@ -127,8 +138,14 @@ class OrderService:
         if len(login) < 3:
             raise ValueError("Логин должен быть не короче 3 символов.")
 
-        if len(new_password) < 6:
-            raise ValueError("Пароль должен быть не короче 6 символов.")
+        if len(login) > 100:
+            raise ValueError("Логин должен быть не длиннее 100 символов.")
+
+        if len(new_password) < 8:
+            raise ValueError("Пароль должен быть не короче 8 символов.")
+
+        if len(new_password.encode("utf-8")) > 72:
+            raise ValueError("Пароль должен быть не длиннее 72 байт.")
 
         existing = self.get_by_account_login(login)
 
@@ -219,6 +236,21 @@ class OrderService:
         values = self._normalize_values(
             data.model_dump(exclude_unset=True),
         )
+        server_selection_changed = (
+            "server_ids" in values
+            or "server_id" in values
+        )
+
+        if (
+            server_selection_changed
+            and order.status == "paid"
+            and order.activated_at
+            and not order.activated_server_ids
+        ):
+            order.activated_server_ids = self._normalize_server_ids(
+                order.server_ids,
+                order.server_id,
+            )
 
         for key, value in values.items():
             if value is not None:
@@ -229,6 +261,7 @@ class OrderService:
             and (
                 order.activated_at is None
                 or order.activation_error
+                or server_selection_changed
             )
         )
 
@@ -374,7 +407,11 @@ class OrderService:
         )
 
         if activated_server_ids:
-            return activated_server_ids
+            return [
+                server_id
+                for server_id in activated_server_ids
+                if server_id in server_ids
+            ]
 
         if order.activated_at and not order.activation_error:
             return list(server_ids)

@@ -210,6 +210,19 @@ class TelegramNotificationService:
             text,
         )
 
+    @classmethod
+    def queue_payment_notification(cls, background_tasks, settings, order):
+        if not cls.is_enabled(settings):
+            return
+
+        text = cls.build_payment_notification_message(order)
+        background_tasks.add_task(
+            cls.send_safely,
+            settings.telegram_bot_token,
+            settings.telegram_chat_id,
+            text,
+        )
+
     @staticmethod
     def is_enabled(settings):
         return bool(
@@ -251,6 +264,21 @@ class TelegramNotificationService:
                 f"Сумма: {cls.format_amount(order.amount, order.currency)}",
                 f"Результат: {result}",
                 details,
+            ]
+        )
+
+    @classmethod
+    def build_payment_notification_message(cls, order):
+        return "\n".join(
+            [
+                f"Клиент сообщил об оплате: заказ #{order.id}",
+                "",
+                f"Клиент: {order.client_email}",
+                f"Контакт: {order.customer_contact or '-'}",
+                f"Тариф: {order.plan_name or '-'}",
+                f"Серверы: {order.server_names or '-'}",
+                f"Сумма: {cls.format_amount(order.amount, order.currency)}",
+                "Действие: проверьте перевод и подтвердите оплату в панели.",
             ]
         )
 

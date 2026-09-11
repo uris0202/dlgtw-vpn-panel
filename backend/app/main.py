@@ -1,4 +1,9 @@
+import logging
+
 from fastapi import FastAPI
+from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.dashboard import router as dashboard_router
 from app.api.auth import router as auth_router
@@ -19,14 +24,21 @@ import app.models.order
 
 from app.db.database import Base
 from app.db.database import engine
+from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
+docs_url = "/docs" if settings.API_DOCS_ENABLED else None
+redoc_url = "/redoc" if settings.API_DOCS_ENABLED else None
+openapi_url = "/openapi.json" if settings.API_DOCS_ENABLED else None
 
 
 app = FastAPI(
     title="DLGTW VPN API",
     version="1.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=docs_url,
+    redoc_url=redoc_url,
+    openapi_url=openapi_url,
     root_path="/api",
 )
 
@@ -46,4 +58,21 @@ app.include_router(accounts_router)
 def root():
     return {
         "status": "ok"
+    }
+
+
+@app.get("/health", include_in_schema=False)
+def health():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError as error:
+        logger.error("Database health check failed: %s", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Service unavailable",
+        ) from error
+
+    return {
+        "status": "ok",
     }

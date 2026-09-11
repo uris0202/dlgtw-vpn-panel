@@ -70,6 +70,7 @@ class OrderResponse(BaseModel):
     status: str
     note: str
     paid_at: datetime | None
+    payment_notified_at: datetime | None
     activated_at: datetime | None
     activation_error: str
     activated_server_ids: list[int]

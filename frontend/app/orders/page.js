@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+    BellRing,
     Check,
     CircleDollarSign,
     Clock3,
@@ -77,9 +78,38 @@ export default function OrdersPage() {
         loadOrders();
     }, [router]);
 
+    useEffect(() => {
+        let active = true;
+        const refreshOrderQueue = async () => {
+            if (document.hidden) return;
+
+            try {
+                const response = await api.get("/orders", getAuthConfig());
+                if (active) {
+                    setOrders(Array.isArray(response.data) ? response.data : []);
+                }
+            } catch {
+                // Manual refresh keeps displaying actionable errors to the admin.
+            }
+        };
+        const intervalId = window.setInterval(refreshOrderQueue, 15000);
+
+        return () => {
+            active = false;
+            window.clearInterval(intervalId);
+        };
+    }, []);
+
     const summary = useMemo(() => buildSummary(orders), [orders]);
     const filteredOrders = orders.filter((order) => {
-        const statusMatches = statusFilter === "all" || order.status === statusFilter;
+        const statusMatches = (
+            statusFilter === "all"
+            || (
+                statusFilter === "payment_review"
+                    ? order.status === "pending" && Boolean(order.payment_notified_at)
+                    : order.status === statusFilter
+            )
+        );
         const normalizedQuery = query.trim().toLowerCase();
         const queryMatches = !normalizedQuery || [
             order.client_email,
@@ -89,7 +119,7 @@ export default function OrdersPage() {
             order.plan_name,
         ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
         return statusMatches && queryMatches;
-    });
+    }).sort(compareOrderPriority);
 
     function logout() {
         localStorage.removeItem("token");
@@ -191,9 +221,9 @@ export default function OrdersPage() {
 
             <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <StatCard title="Всего заказов" value={orders.length} description="За всё время" icon={ShoppingCart} />
-                <StatCard title="Ожидают оплаты" value={summary.pending} description="Требуют подтверждения" tone={summary.pending > 0 ? "warning" : "neutral"} icon={Clock3} />
-                <StatCard title="Оплачено" value={summary.paid} description="Доступ выдан или выдаётся" tone="success" />
-                <StatCard title="Выручка" value={formatPrice(summary.revenue, summary.currency)} description="По оплаченным заказам" icon={CircleDollarSign} />
+                <StatCard title="К проверке" value={summary.paymentReview} description="Клиенты сообщили об оплате" tone={summary.paymentReview > 0 ? "warning" : "neutral"} icon={BellRing} />
+                <StatCard title="Ожидают оплаты" value={summary.pending} description="Все неподтверждённые заказы" tone={summary.pending > 0 ? "warning" : "neutral"} icon={Clock3} />
+                <StatCard title="Выручка" value={formatPrice(summary.revenue, summary.currency)} description={`${summary.paid} оплаченных заказов`} icon={CircleDollarSign} />
             </div>
 
             <Card className="mb-4 p-4">
@@ -204,6 +234,7 @@ export default function OrdersPage() {
                     </label>
                     <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Статус заказа">
                         <option value="all">Все статусы</option>
+                        <option value="payment_review">Клиент сообщил об оплате</option>
                         <option value="pending">Ожидает оплаты</option>
                         <option value="paid">Оплачен</option>
                         <option value="canceled">Отменён</option>
@@ -244,8 +275,10 @@ export default function OrdersPage() {
 }
 
 function OrderRow({ order, actionLoading, onEdit, onDelete, onMarkPaid, onRetryActivation, onCancel }) {
+    const paymentReported = order.status === "pending" && Boolean(order.payment_notified_at);
+
     return (
-        <article className="grid gap-4 px-4 py-5 sm:px-5 xl:grid-cols-[minmax(0,1fr)_auto]">
+        <article className={`grid gap-4 px-4 py-5 sm:px-5 xl:grid-cols-[minmax(0,1fr)_auto] ${paymentReported ? "bg-[#fffaeb]" : ""}`}>
             <div className="min-w-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -258,8 +291,13 @@ function OrderRow({ order, actionLoading, onEdit, onDelete, onMarkPaid, onRetryA
                         </div>
                         {order.customer_contact && <div className="mt-1 text-xs text-muted-foreground">Контакт: <span className="font-medium text-foreground">{order.customer_contact}</span></div>}
                     </div>
-                    <Badge variant={getStatusVariant(order.status)}>{getStatusLabel(order.status)}</Badge>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        {paymentReported && <Badge variant="warning"><BellRing className="size-3.5" />Клиент оплатил</Badge>}
+                        <Badge variant={getStatusVariant(order.status)}>{getStatusLabel(order.status)}</Badge>
+                    </div>
                 </div>
+
+                {paymentReported && <div className="mt-3 text-xs font-medium text-[#b54708]">Сообщение получено {formatDateTime(order.payment_notified_at)}. Проверьте перевод.</div>}
 
                 <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 xl:grid-cols-6">
                     <Detail label="Сумма" value={formatPrice(order.amount, order.currency)} />
@@ -284,7 +322,7 @@ function OrderRow({ order, actionLoading, onEdit, onDelete, onMarkPaid, onRetryA
                     <Button size="sm" onClick={onRetryActivation} disabled={actionLoading} className="col-span-2 w-full sm:w-auto"><RotateCcw className={actionLoading ? "animate-spin" : ""} />{actionLoading ? "Обработка..." : "Повторить выдачу"}</Button>
                 )}
                 {order.status !== "paid" && order.status !== "access" && (
-                    <Button size="sm" onClick={onMarkPaid} disabled={actionLoading} className="w-full sm:w-auto"><Check />{actionLoading ? "Обработка..." : "Оплачен"}</Button>
+                    <Button size="sm" onClick={onMarkPaid} disabled={actionLoading} className="w-full sm:w-auto"><Check />{actionLoading ? "Обработка..." : paymentReported ? "Подтвердить" : "Оплачен"}</Button>
                 )}
                 {order.status !== "canceled" && order.status !== "access" && (
                     <Button variant="outline" size="sm" onClick={onCancel} disabled={actionLoading} className="w-full sm:w-auto"><XCircle />Отменить</Button>
@@ -304,10 +342,20 @@ function buildSummary(orders) {
     const paidOrders = orders.filter((order) => order.status === "paid");
     return {
         pending: orders.filter((order) => order.status === "pending").length,
+        paymentReview: orders.filter((order) => order.status === "pending" && order.payment_notified_at).length,
         paid: paidOrders.length,
         revenue: paidOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0),
         currency: paidOrders[0]?.currency || "RUB",
     };
+}
+
+function compareOrderPriority(first, second) {
+    const firstPriority = first.status === "pending" && first.payment_notified_at ? 0 : first.status === "pending" ? 1 : 2;
+    const secondPriority = second.status === "pending" && second.payment_notified_at ? 0 : second.status === "pending" ? 1 : 2;
+
+    if (firstPriority !== secondPriority) return firstPriority - secondPriority;
+
+    return Number(second.id || 0) - Number(first.id || 0);
 }
 
 function getStatusLabel(status) {
@@ -339,6 +387,10 @@ function formatPrice(value, currency) {
 
 function formatDate(value) {
     return value ? new Date(value).toLocaleDateString("ru-RU") : "-";
+}
+
+function formatDateTime(value) {
+    return value ? new Date(value).toLocaleString("ru-RU") : "-";
 }
 
 function getAuthConfig() {

@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
 
   postgres:
@@ -16,6 +22,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    logging: *default-logging
+
     networks:
       - vpnpanel
 
@@ -25,17 +40,29 @@ services:
 
     restart: unless-stopped
 
+    init: true
+
     env_file:
       - .env
 
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
     expose:
       - "8000"
     
-    volumes:
-    - ./backend:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging: *default-logging
 
     networks:
       - vpnpanel
@@ -46,11 +73,26 @@ services:
 
     restart: unless-stopped
 
+    init: true
+
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
     expose:
       - "3000"
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging: *default-logging
 
     networks:
       - vpnpanel
@@ -67,13 +109,17 @@ services:
       - "443:443"
 
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
+
+    logging: *default-logging
 
     networks:
       - vpnpanel

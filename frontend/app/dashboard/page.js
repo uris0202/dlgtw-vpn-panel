@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     ArrowRight,
+    BellRing,
     CheckCircle2,
     Clock3,
     RefreshCw,
@@ -93,6 +94,28 @@ export default function Dashboard() {
         loadDashboard();
 
     }, [loadDashboard]);
+
+    useEffect(() => {
+        let active = true;
+        const refreshOrders = async () => {
+            if (document.hidden) return;
+
+            try {
+                const loadedOrders = await getDashboardOrders();
+                if (active) {
+                    setOrders(Array.isArray(loadedOrders) ? loadedOrders : []);
+                }
+            } catch {
+                // The main refresh action reports errors without interrupting polling.
+            }
+        };
+        const intervalId = window.setInterval(refreshOrders, 15000);
+
+        return () => {
+            active = false;
+            window.clearInterval(intervalId);
+        };
+    }, []);
 
     const summary = useMemo(
         () => buildSummary(servers),
@@ -237,7 +260,7 @@ export default function Dashboard() {
                         <StatCard
                             title="Ожидают оплаты"
                             value={orderSummary.pending.length}
-                            description={`${formatPrice(orderSummary.pendingAmount, orderSummary.currency)} к подтверждению`}
+                            description={`${orderSummary.paymentReview.length} сообщили об оплате`}
                             tone={orderSummary.pending.length > 0 ? "warning" : "neutral"}
                         />
 
@@ -470,6 +493,7 @@ function OrderAlertRow({
 }) {
 
     const hasActivationError = Boolean(order.activation_error);
+    const paymentReported = order.status === "pending" && Boolean(order.payment_notified_at);
     const tone = hasActivationError ? "danger" : "warning";
 
     return (
@@ -490,10 +514,13 @@ function OrderAlertRow({
                 {hasActivationError && (
                     <div className="mt-1.5 text-xs text-destructive">{order.activation_error}</div>
                 )}
+                {paymentReported && (
+                    <div className="mt-1.5 text-xs font-medium text-[#b54708]">Клиент сообщил об оплате.</div>
+                )}
             </div>
 
             <Badge variant={tone === "danger" ? "destructive" : "warning"}>
-                {hasActivationError ? "Ошибка" : "Оплата"}
+                {hasActivationError ? "Ошибка" : paymentReported ? <><BellRing className="size-3.5" />Клиент оплатил</> : "Ожидает"}
             </Badge>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -565,6 +592,8 @@ function buildOrderSummary(orders) {
 
     const safeOrders = orders || [];
     const pending = safeOrders.filter((order) => order.status === "pending");
+    const paymentReview = pending.filter((order) => order.payment_notified_at);
+    const awaitingPayment = pending.filter((order) => !order.payment_notified_at);
     const activationErrors = safeOrders.filter((order) =>
         order.status === "paid" && order.activation_error
     );
@@ -573,12 +602,14 @@ function buildOrderSummary(orders) {
         || safeOrders[0]?.currency
         || "RUB";
     const actionItems = [
-        ...activationErrors,
-        ...pending,
-    ].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+        ...sortOrders(activationErrors),
+        ...sortOrders(paymentReview),
+        ...sortOrders(awaitingPayment),
+    ];
 
     return {
         pending,
+        paymentReview,
         activationErrors,
         actionItems,
         pendingAmount: pending.reduce(
@@ -588,6 +619,10 @@ function buildOrderSummary(orders) {
         currency,
     };
 
+}
+
+function sortOrders(orders) {
+    return [...orders].sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 }
 
 function buildSummary(servers) {

@@ -13,6 +13,8 @@ from app.schemas.order import OrderResponse
 from app.schemas.order import OrderUpdate
 from app.services.client_service import ClientService
 from app.services.order_service import OrderService
+from app.services.plan_service import PlanService
+from app.services.server_service import ServerService
 from app.services.settings_service import SettingsService
 from app.services.telegram_service import TelegramNotificationService
 
@@ -45,7 +47,7 @@ def create_order(
     db: Session = Depends(get_db),
 ):
 
-    validate_order_plan(payload)
+    validate_order_plan(payload, db)
 
     return OrderService(db).create(payload)
 
@@ -158,7 +160,7 @@ def update_order(
             detail="Order not found",
         )
 
-    validate_order_plan(payload, order)
+    validate_order_plan(payload, db, order)
 
     updated_order = service.update(order, payload)
 
@@ -195,7 +197,7 @@ def delete_order(
     }
 
 
-def validate_order_plan(payload, order=None):
+def validate_order_plan(payload, db, order=None):
 
     status = payload.status
 
@@ -209,10 +211,72 @@ def validate_order_plan(payload, order=None):
     if plan_id is None and order is not None:
         plan_id = order.plan_id
 
-    if status != "access" and not plan_id:
+    if status == "access":
+        return
+
+    if not plan_id:
         raise HTTPException(
             status_code=400,
             detail="Выберите тариф для заказа.",
+        )
+
+    should_validate_servers = (
+        order is None
+        or payload.status == "paid"
+        or payload.plan_id is not None
+        or payload.server_id is not None
+        or payload.server_ids is not None
+    )
+
+    if not should_validate_servers:
+        return
+
+    plan = PlanService(db).get(plan_id)
+
+    if plan is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Выбранный тариф не найден.",
+        )
+
+    if (
+        payload.server_ids is None
+        and payload.server_id is None
+        and order is not None
+    ):
+        raw_server_ids = order.server_ids
+        raw_server_id = order.server_id
+    else:
+        raw_server_ids = payload.server_ids or []
+        raw_server_id = payload.server_id
+
+    server_ids = normalize_server_ids(
+        raw_server_ids,
+        raw_server_id,
+    )
+
+    if len(server_ids) != plan.server_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"По выбранному тарифу нужно выбрать серверов: {plan.server_limit}.",
+        )
+
+    enabled_server_ids = {
+        server.id
+        for server in ServerService(db).get_all()
+        if server.enabled
+    }
+
+    if len(enabled_server_ids) < plan.server_limit:
+        raise HTTPException(
+            status_code=400,
+            detail="Для выбранного тарифа недостаточно доступных VPN-серверов.",
+        )
+
+    if any(server_id not in enabled_server_ids for server_id in server_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="В заказе выбран недоступный VPN-сервер.",
         )
 
 

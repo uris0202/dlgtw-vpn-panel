@@ -34,7 +34,11 @@ import {
     clearClientToken,
     getClientAuthConfig,
 } from "../../../lib/clientAuth";
-import { selectServersForPlan } from "../../../lib/serverSelection";
+import {
+    getServerSelectionMessage,
+    getServerSelectionStatus,
+    selectServersForPlan,
+} from "../../../lib/serverSelection";
 
 export default function ClientAccountPage() {
     const params = useParams();
@@ -59,13 +63,72 @@ export default function ClientAccountPage() {
     const [credentialMessage, setCredentialMessage] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [paymentSubmitting, setPaymentSubmitting] = useState(false);
     const [error, setError] = useState("");
 
     useEffect(() => {
         if (accountToken) loadAccount();
     }, [accountToken]);
 
+    useEffect(() => {
+        if (
+            !payment?.id
+            || !payment.payment_notified_at
+            || payment.status !== "pending"
+        ) {
+            return undefined;
+        }
+
+        let active = true;
+        const checkStatus = async () => {
+            if (document.hidden) return;
+
+            try {
+                const response = await api.get(
+                    `${getAccountEndpoint(accountToken, sessionMode)}/orders/${payment.id}/status`,
+                    sessionMode ? getClientAuthConfig() : undefined,
+                );
+
+                if (!active) return;
+
+                if (response.data.status === "pending") {
+                    setPayment((current) => (
+                        current?.id === response.data.id
+                            ? { ...current, ...response.data }
+                            : current
+                    ));
+                    setOrders((current) => current.map((order) => (
+                        order.id === response.data.id
+                            ? { ...order, ...response.data }
+                            : order
+                    )));
+                    return;
+                }
+
+                await loadAccount();
+            } catch (error) {
+                if (handleSessionError(error, sessionMode, router)) {
+                    active = false;
+                }
+            }
+        };
+        const intervalId = window.setInterval(checkStatus, 10000);
+
+        return () => {
+            active = false;
+            window.clearInterval(intervalId);
+        };
+    }, [accountToken, payment?.id, payment?.payment_notified_at, payment?.status, sessionMode]);
+
     const selectedPlan = useMemo(() => plans.find((plan) => String(plan.id) === String(selectedPlanId)), [plans, selectedPlanId]);
+    const serverSelection = useMemo(
+        () => getServerSelectionStatus(
+            selectedServerIds,
+            servers,
+            selectedPlan?.server_limit,
+        ),
+        [selectedPlan, selectedServerIds, servers],
+    );
     const accessState = useMemo(() => buildAccessState(account, subscriptions, orders), [account, subscriptions, orders]);
 
     async function loadAccount() {
@@ -109,8 +172,10 @@ export default function ClientAccountPage() {
     }
 
     function toggleServer(serverId) {
+        if (serverSelection.allServersRequired && serverSelection.isComplete) return;
+
         const normalizedServerId = Number(serverId);
-        const limit = Number(selectedPlan?.server_limit || 1);
+        const limit = serverSelection.requiredCount;
         setSelectedServerIds((current) => {
             if (current.includes(normalizedServerId)) return current.filter((item) => item !== normalizedServerId);
             if (current.length >= limit) return limit === 1 ? [normalizedServerId] : current;
@@ -124,7 +189,11 @@ export default function ClientAccountPage() {
             setError("Выберите тариф.");
             return;
         }
-        if (selectedServerIds.length !== Number(selectedPlan.server_limit || 1)) {
+        if (!serverSelection.hasEnoughServers) {
+            setError(`Для тарифа нужно серверов: ${serverSelection.requiredCount}. Сейчас доступно: ${serverSelection.availableCount}.`);
+            return;
+        }
+        if (!serverSelection.isComplete) {
             setError(`По выбранному тарифу нужно выбрать серверов: ${selectedPlan.server_limit}.`);
             return;
         }
@@ -180,6 +249,32 @@ export default function ClientAccountPage() {
         }
     }
 
+    async function notifyPayment() {
+        if (!payment?.id || paymentSubmitting) return;
+
+        setPaymentSubmitting(true);
+        setError("");
+
+        try {
+            const response = await api.post(
+                `${getAccountEndpoint(accountToken, sessionMode)}/orders/${payment.id}/payment-notification`,
+                {},
+                sessionMode ? getClientAuthConfig() : undefined,
+            );
+            setPayment(response.data);
+            setOrders((current) => current.map((order) => (
+                order.id === response.data.id
+                    ? { ...order, ...response.data }
+                    : order
+            )));
+        } catch (error) {
+            if (handleSessionError(error, sessionMode, router)) return;
+            setError(getErrorMessage(error, "Не удалось сообщить об оплате."));
+        } finally {
+            setPaymentSubmitting(false);
+        }
+    }
+
     function handleAccessAction() {
         if (accessState.targetId === "pending-payment" && payment) {
             setPaymentHidden(false);
@@ -230,7 +325,7 @@ export default function ClientAccountPage() {
                     <Button type="button" onClick={handleAccessAction} className="w-full sm:w-auto">{accessState.actionLabel}</Button>
                 </section>
 
-                {payment && !paymentHidden && <PaymentBox payment={payment} onClose={() => setPaymentHidden(true)} />}
+                {payment && !paymentHidden && <PaymentBox payment={payment} notifying={paymentSubmitting} onNotify={notifyPayment} onClose={() => setPaymentHidden(true)} />}
 
                 <Card className="mb-5 overflow-hidden">
                     <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
@@ -275,11 +370,14 @@ export default function ClientAccountPage() {
                                 <div className="grid gap-2 sm:grid-cols-2">
                                     {servers.map((server) => {
                                         const selected = selectedServerIds.includes(Number(server.id));
-                                        const limit = Number(selectedPlan?.server_limit || 1);
-                                        const disabled = limit > 1 && selectedServerIds.length >= limit && !selected;
+                                        const selectionLocked = serverSelection.allServersRequired && serverSelection.isComplete;
+                                        const disabled = selectionLocked || (
+                                            serverSelection.selectedCount >= serverSelection.requiredCount
+                                            && !selected
+                                        );
                                         return (
-                                            <label key={server.id} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
-                                                <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary" />
+                                            <label key={server.id} className={`flex min-h-12 items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] ${selectionLocked ? "cursor-default" : disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
+                                                <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary disabled:opacity-100" />
                                                 <ServerIcon className="size-4 text-muted-foreground" />
                                                 <span className="min-w-0"><span className="block truncate font-medium">{server.name}</span><span className="block truncate text-xs text-muted-foreground">{server.country}</span></span>
                                             </label>
@@ -288,8 +386,8 @@ export default function ClientAccountPage() {
                                 </div>
 
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <span className="text-xs text-muted-foreground">{selectedPlan ? `Выбрано ${selectedServerIds.length} из ${selectedPlan.server_limit} серверов` : "Выберите тариф"}</span>
-                                    <Button type="submit" disabled={saving || plans.length === 0}>{saving ? <Loader2 className="animate-spin" /> : <CreditCard />}{saving ? "Создание заказа..." : "Создать заказ на продление"}</Button>
+                                    <span className={`text-xs ${serverSelection.hasEnoughServers && serverSelection.isComplete ? "text-muted-foreground" : "text-destructive"}`}>{selectedPlan ? getServerSelectionMessage(serverSelection) : "Выберите тариф"}</span>
+                                    <Button type="submit" disabled={saving || plans.length === 0 || !serverSelection.hasEnoughServers || !serverSelection.isComplete}>{saving ? <Loader2 className="animate-spin" /> : <CreditCard />}{saving ? "Создание заказа..." : "Создать заказ на продление"}</Button>
                                 </div>
                             </form>
                         </Card>
@@ -303,10 +401,10 @@ export default function ClientAccountPage() {
                     <Card className="overflow-hidden xl:sticky xl:top-5">
                         <div className="border-b border-border px-5 py-4"><div className="flex items-center gap-2"><KeyRound className="size-4 text-primary" /><h2 className="m-0 text-base font-semibold">Вход в кабинет</h2></div><p className="mt-1 mb-0 text-sm text-muted-foreground">Изменение логина и пароля клиента</p></div>
                         <form onSubmit={submitCredentials} className="grid gap-4 p-5">
-                            <Field label="Логин"><Input value={credentialLogin} onChange={(event) => setCredentialLogin(event.target.value)} minLength={3} required autoComplete="username" /></Field>
-                            {account?.has_password && <Field label="Текущий пароль"><Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required autoComplete="current-password" /></Field>}
-                            <Field label="Новый пароль"><Input type="password" value={credentialPassword} onChange={(event) => setCredentialPassword(event.target.value)} minLength={6} required autoComplete="new-password" /></Field>
-                            <Field label="Повторите пароль"><Input type="password" value={credentialPasswordConfirm} onChange={(event) => setCredentialPasswordConfirm(event.target.value)} minLength={6} required autoComplete="new-password" /></Field>
+                            <Field label="Логин"><Input value={credentialLogin} onChange={(event) => setCredentialLogin(event.target.value)} minLength={3} maxLength={100} required autoComplete="username" /></Field>
+                            {account?.has_password && <Field label="Текущий пароль"><Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} maxLength={72} required autoComplete="current-password" /></Field>}
+                            <Field label="Новый пароль"><Input type="password" value={credentialPassword} onChange={(event) => setCredentialPassword(event.target.value)} minLength={8} maxLength={72} required autoComplete="new-password" /></Field>
+                            <Field label="Повторите пароль"><Input type="password" value={credentialPasswordConfirm} onChange={(event) => setCredentialPasswordConfirm(event.target.value)} minLength={8} maxLength={72} required autoComplete="new-password" /></Field>
                             {credentialMessage && <Alert variant="success">{credentialMessage}</Alert>}
                             <Button type="submit" disabled={credentialSaving} className="w-full">{credentialSaving ? <Loader2 className="animate-spin" /> : <Save />}{credentialSaving ? "Сохранение..." : "Сохранить вход"}</Button>
                         </form>
@@ -346,12 +444,25 @@ function LinkSection({ title, value }) {
     );
 }
 
-function PaymentBox({ payment, onClose }) {
+function PaymentBox({ payment, notifying, onNotify, onClose }) {
     return (
         <Card id="pending-payment" className="mb-5 scroll-mt-5 overflow-hidden border-[#fedf89]">
             <div className="flex items-start justify-between gap-4 border-b border-[#fedf89] bg-[#fffaeb] px-5 py-4"><div><div className="flex items-center gap-2"><CreditCard className="size-4 text-[#b54708]" /><h2 className="m-0 text-base font-semibold">Оплата заказа #{payment.id}</h2></div><p className="mt-1 mb-0 text-sm text-[#b54708]">Переведите указанную сумму и используйте точный комментарий.</p></div><Button type="button" variant="ghost" size="icon" onClick={onClose} title="Скрыть" aria-label="Скрыть"><X /></Button></div>
             <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"><Detail label="Тариф" value={payment.plan_name} /><Detail label="Серверы" value={payment.server_names} /><Detail label="Сумма" value={formatPrice(payment.amount, payment.currency)} /><Detail label="Комментарий" value={payment.payment_comment} /></div>
             <div className="grid gap-2 border-t border-border px-5 py-4 text-sm"><div>Номер телефона: <b>{payment.payment_phone || "не указан"}</b></div>{payment.payment_recipient && <div>Получатель: <b>{payment.payment_recipient}</b></div>}{payment.payment_instructions && <p className="m-0 text-muted-foreground">{payment.payment_instructions}</p>}</div>
+            <div className="border-t border-border px-5 py-4">
+                {payment.payment_notified_at ? (
+                    <Alert variant="success">Сообщение об оплате отправлено. Статус обновится автоматически после проверки.</Alert>
+                ) : (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="text-sm text-muted-foreground">После перевода сообщите администратору.</span>
+                        <Button type="button" onClick={onNotify} disabled={notifying}>
+                            {notifying ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                            {notifying ? "Отправка..." : "Я оплатил"}
+                        </Button>
+                    </div>
+                )}
+            </div>
         </Card>
     );
 }
@@ -360,7 +471,7 @@ function OrderHistoryItem({ order }) {
     return (
         <div className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <div className="min-w-0"><div className="font-semibold">Заказ #{order.id}</div><div className="mt-1 text-sm text-muted-foreground">{order.plan_name || "Без тарифа"} · {order.server_names || "Сервер не выбран"}</div>{order.activation_error && <div className="mt-2 text-xs text-[#b42318]">{order.activation_error}</div>}</div>
-            <div className="flex items-center gap-3 sm:flex-col sm:items-end sm:gap-1"><Badge variant={getOrderVariant(order.status)}>{getOrderStatusLabel(order.status)}</Badge><div className="text-sm font-semibold">{formatPrice(order.amount, order.currency)}</div></div>
+            <div className="flex items-center gap-3 sm:flex-col sm:items-end sm:gap-1"><Badge variant={getOrderVariant(order.status)}>{getOrderStatusLabel(order.status, order.payment_notified_at)}</Badge><div className="text-sm font-semibold">{formatPrice(order.amount, order.currency)}</div></div>
         </div>
     );
 }
@@ -421,7 +532,8 @@ function buildAccessState(account, subscriptions, orders) {
     const activeSubscriptions = (subscriptions || []).filter(isSubscriptionActive);
     const pendingOrder = (orders || []).find((order) => order.status === "pending");
     if (account?.status === "active") return { title: "Доступ активен", description: `Активно до ${formatExpiry(account.expires_at)}. Доступных серверов: ${activeSubscriptions.length}.`, actionLabel: "Продлить доступ", targetId: "renew-access", tone: "success" };
-    if (account?.status === "pending") return { title: "Оплата ожидает подтверждения", description: pendingOrder ? `Заказ #${pendingOrder.id} создан. После перевода оплата будет подтверждена администратором.` : "После перевода оплата будет подтверждена администратором.", actionLabel: "Реквизиты оплаты", targetId: "pending-payment", tone: "warning" };
+    if (account?.status === "pending" && pendingOrder?.payment_notified_at) return { title: "Оплата проверяется", description: `Вы сообщили об оплате заказа #${pendingOrder.id}. Статус обновится автоматически.`, actionLabel: "Статус оплаты", targetId: "pending-payment", tone: "warning" };
+    if (account?.status === "pending") return { title: "Ожидается оплата", description: pendingOrder ? `Заказ #${pendingOrder.id} создан. Выполните перевод и нажмите «Я оплатил».` : "Выполните перевод и сообщите об оплате.", actionLabel: "Реквизиты оплаты", targetId: "pending-payment", tone: "warning" };
     if (account?.status === "expired") return { title: "Срок доступа закончился", description: "Выберите тариф и серверы, чтобы снова пользоваться VPN.", actionLabel: "Возобновить доступ", targetId: "renew-access", tone: "danger" };
     return { title: "Доступ ещё не подключён", description: "Выберите подходящий тариф и серверы для первого подключения.", actionLabel: "Выбрать тариф", targetId: "renew-access", tone: "neutral" };
 }
@@ -440,10 +552,11 @@ function getStatusLabel(status) {
     return "Новая";
 }
 
-function getOrderStatusLabel(status) {
+function getOrderStatusLabel(status, paymentNotifiedAt) {
     if (status === "paid") return "Оплачен";
     if (status === "canceled") return "Отменён";
     if (status === "access") return "Доступ в ЛК";
+    if (paymentNotifiedAt) return "Оплата проверяется";
     return "Ожидает оплаты";
 }
 
