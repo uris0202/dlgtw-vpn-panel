@@ -11,6 +11,7 @@ import {
     Search,
     Server,
     Settings,
+    ScrollText,
     ShieldCheck,
     ShoppingCart,
     UserRoundCog,
@@ -47,6 +48,7 @@ const navigation = [
     {
         label: "Система",
         items: [
+            { href: "/activity", label: "Журнал действий", icon: ScrollText },
             { href: "/settings", label: "Настройки", icon: Settings },
         ],
     },

@@ -23,6 +23,7 @@ from app.auth.account import set_account_session_cookie
 from app.core.config import settings as app_settings
 from app.core.request import get_client_ip
 from app.schemas.order import OrderCreate
+from app.services.audit_log_service import AuditLogService
 from app.services.client_service import ClientService
 from app.services.order_service import OrderService
 from app.services.plan_service import PlanService
@@ -178,6 +179,15 @@ def create_public_order(
             SettingsService(db).get(),
             order,
         )
+        AuditLogService(db).record_customer(
+            order,
+            action="order.created",
+            entity_type="order",
+            entity_id=order.id,
+            summary=f"Клиент создал заказ #{order.id}",
+            details=public_order_audit_details(order),
+            ip_address=get_client_ip(request),
+        )
 
     return build_payment_response(db, order)
 
@@ -212,6 +222,14 @@ def login_public_account(
 
     account_login_limiter.reset(rate_limit_key)
     set_account_session_cookie(response, order)
+    AuditLogService(db).record_customer(
+        order,
+        action="account.login",
+        entity_type="account",
+        entity_id=order.id,
+        summary=f"Вход в личный кабинет клиента {order.client_email}",
+        ip_address=get_client_ip(request),
+    )
 
     return {
         "success": True,
@@ -258,6 +276,7 @@ def update_session_account_credentials(
         account,
         payload,
         response,
+        request,
     )
 
 
@@ -281,6 +300,7 @@ def create_session_renew_order(
         account,
         payload,
         background_tasks,
+        request,
     )
 
 
@@ -356,6 +376,7 @@ def update_public_account_credentials(
         anchor_order,
         payload,
         response,
+        request,
     )
 
 
@@ -391,6 +412,7 @@ def create_public_renew_order(
         anchor_order,
         payload,
         background_tasks,
+        request,
     )
 
 
@@ -464,6 +486,7 @@ def update_account_credentials_response(
     anchor_order,
     payload,
     response,
+    request,
 ):
     service = OrderService(db)
 
@@ -481,6 +504,15 @@ def update_account_credentials_response(
         )
 
     set_account_session_cookie(response, anchor_order)
+    AuditLogService(db).record_customer(
+        anchor_order,
+        action="account.credentials_updated",
+        entity_type="account",
+        entity_id=anchor_order.id,
+        summary=f"Изменены данные входа клиента {anchor_order.client_email}",
+        details={"login_changed": True, "password_changed": True},
+        ip_address=get_client_ip(request),
+    )
 
     return {
         "success": True,
@@ -494,6 +526,7 @@ def create_renew_order_response(
     anchor_order,
     payload,
     background_tasks,
+    request,
 ):
     plan, server_ids = validate_order_choice(
         db,
@@ -519,6 +552,15 @@ def create_renew_order_response(
         SettingsService(db).get(),
         order,
         title="Запрос на продление",
+    )
+    AuditLogService(db).record_customer(
+        anchor_order,
+        action="order.renewal_created",
+        entity_type="order",
+        entity_id=order.id,
+        summary=f"Клиент создал заказ на продление #{order.id}",
+        details=public_order_audit_details(order),
+        ip_address=get_client_ip(request),
     )
 
     return build_payment_response(db, order)
@@ -561,6 +603,15 @@ def notify_order_payment_response(
             background_tasks,
             SettingsService(db).get(),
             order,
+        )
+        AuditLogService(db).record_customer(
+            anchor_order,
+            action="order.payment_reported",
+            entity_type="order",
+            entity_id=order.id,
+            summary=f"Клиент сообщил об оплате заказа #{order.id}",
+            details=public_order_audit_details(order),
+            ip_address=get_client_ip(request),
         )
 
     return build_payment_response(db, order)
@@ -612,6 +663,16 @@ def build_order_status_response(order):
         "activated_at": order.activated_at,
         "activation_error": order.activation_error,
         "activated_server_ids": order.activated_server_ids,
+    }
+
+
+def public_order_audit_details(order):
+    return {
+        "status": order.status,
+        "plan_name": order.plan_name,
+        "server_ids": get_order_server_ids(order),
+        "amount": order.amount,
+        "currency": order.currency,
     }
 
 

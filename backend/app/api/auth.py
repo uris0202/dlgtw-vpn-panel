@@ -11,6 +11,7 @@ from app.core.request import get_client_ip
 from app.db.deps import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserResponse
+from app.services.audit_log_service import AuditLogService
 from app.services.rate_limit import RateLimiter
 from app.services.user_service import UserService
 
@@ -74,6 +75,14 @@ def register(
         ) from error
 
     admin_registration_limiter.reset(rate_limit_key)
+    AuditLogService(db).record_admin(
+        created,
+        action="admin.registered",
+        entity_type="admin",
+        entity_id=created.id,
+        summary=f"Зарегистрирован администратор {created.email}",
+        ip_address=get_client_ip(request),
+    )
 
     return created
 
@@ -121,6 +130,14 @@ def login(
             "sub": str(current.id),
             "token_type": "admin",
         }
+    )
+    AuditLogService(db).record_admin(
+        current,
+        action="admin.login",
+        entity_type="admin",
+        entity_id=current.id,
+        summary=f"Вход администратора {current.email}",
+        ip_address=get_client_ip(request),
     )
 
     return {

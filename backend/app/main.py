@@ -15,12 +15,14 @@ from app.api.plans import router as plans_router
 from app.api.orders import router as orders_router
 from app.api.public import router as public_router
 from app.api.accounts import router as accounts_router
+from app.api.audit_logs import router as audit_logs_router
 
 import app.models.user
 import app.models.server
 import app.models.settings
 import app.models.plan
 import app.models.order
+import app.models.audit_log
 
 from app.db.database import Base
 from app.db.database import engine
@@ -52,6 +54,7 @@ app.include_router(plans_router)
 app.include_router(orders_router)
 app.include_router(public_router)
 app.include_router(accounts_router)
+app.include_router(audit_logs_router)
 
 
 @app.get("/")

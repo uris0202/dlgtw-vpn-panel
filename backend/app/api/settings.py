@@ -1,16 +1,19 @@
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Request
 from pydantic import BaseModel
 from pydantic import Field
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
+from app.core.request import get_client_ip
 from app.db.deps import get_db
 from app.models.user import User
 from app.schemas.settings import SettingsResponse
 from app.schemas.settings import SettingsUpdate
 from app.services.settings_service import SettingsService
+from app.services.audit_log_service import AuditLogService
 from app.services.telegram_service import TelegramNotificationError
 from app.services.telegram_service import TelegramNotificationService
 
@@ -43,17 +46,36 @@ def get_settings(
 )
 def update_settings(
     payload: SettingsUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
 
     try:
-        return SettingsService(db).update(payload)
+        updated = SettingsService(db).update(payload)
     except ValueError as error:
         raise HTTPException(
             status_code=400,
             detail=str(error),
         )
+
+    changed_fields = set(payload.model_dump(exclude_unset=True).keys())
+    token_changed = "telegram_bot_token" in changed_fields
+    changed_fields.discard("telegram_bot_token")
+    AuditLogService(db).record_admin(
+        current_user,
+        action="settings.updated",
+        entity_type="settings",
+        entity_id=1,
+        summary="Изменены настройки панели",
+        details={
+            "changed_fields": sorted(changed_fields),
+            "telegram_bot_token_changed": token_changed,
+        },
+        ip_address=get_client_ip(request),
+    )
+
+    return updated
 
 
 @router.post("/telegram/test")

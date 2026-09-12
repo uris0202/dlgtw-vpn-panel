@@ -3,10 +3,12 @@ from app.models.user import User
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Request
 
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
+from app.core.request import get_client_ip
 
 from app.schemas.server import (
     ServerCreate,
@@ -15,6 +17,7 @@ from app.schemas.server import (
 )
 
 from app.services.server_service import ServerService
+from app.services.audit_log_service import AuditLogService
 
 router = APIRouter(
     prefix="/servers",
@@ -42,13 +45,25 @@ def get_servers(
 )
 def create_server(
     server: ServerCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
 
     service = ServerService(db)
 
-    return service.create(server)
+    created = service.create(server)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="server.created",
+        entity_type="server",
+        entity_id=created.id,
+        summary=f"Добавлен VPN-сервер {created.name}",
+        details={"country": created.country, "enabled": created.enabled},
+        ip_address=get_client_ip(request),
+    )
+
+    return created
 
 
 @router.patch(
@@ -58,6 +73,7 @@ def create_server(
 def update_server(
     server_id: int,
     payload: ServerUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -73,12 +89,26 @@ def update_server(
             detail="Server not found",
         )
 
-    return service.update(server, payload)
+    updated = service.update(server, payload)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="server.updated",
+        entity_type="server",
+        entity_id=updated.id,
+        summary=f"Изменён VPN-сервер {updated.name}",
+        details={
+            "changed_fields": sorted(payload.model_dump(exclude_unset=True).keys()),
+        },
+        ip_address=get_client_ip(request),
+    )
+
+    return updated
 
 
 @router.delete("/{server_id}")
 def delete_server(
     server_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -94,7 +124,16 @@ def delete_server(
             detail="Server not found",
         )
 
+    server_name = server.name
     service.delete(server)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="server.deleted",
+        entity_type="server",
+        entity_id=server_id,
+        summary=f"Удалён VPN-сервер {server_name}",
+        ip_address=get_client_ip(request),
+    )
 
     return {
         "success": True,

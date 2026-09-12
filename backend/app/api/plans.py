@@ -3,13 +3,16 @@ from app.models.user import User
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
+from app.core.request import get_client_ip
 from app.schemas.plan import PlanCreate
 from app.schemas.plan import PlanResponse
 from app.schemas.plan import PlanUpdate
 from app.services.plan_service import PlanService
+from app.services.audit_log_service import AuditLogService
 
 
 router = APIRouter(
@@ -36,11 +39,27 @@ def get_plans(
 )
 def create_plan(
     payload: PlanCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
 
-    return PlanService(db).create(payload)
+    created = PlanService(db).create(payload)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="plan.created",
+        entity_type="plan",
+        entity_id=created.id,
+        summary=f"Создан тариф {created.name}",
+        details={
+            "price": created.price,
+            "currency": created.currency,
+            "server_limit": created.server_limit,
+        },
+        ip_address=get_client_ip(request),
+    )
+
+    return created
 
 
 @router.patch(
@@ -50,6 +69,7 @@ def create_plan(
 def update_plan(
     plan_id: int,
     payload: PlanUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -63,12 +83,26 @@ def update_plan(
             detail="Plan not found",
         )
 
-    return service.update(plan, payload)
+    updated = service.update(plan, payload)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="plan.updated",
+        entity_type="plan",
+        entity_id=updated.id,
+        summary=f"Изменён тариф {updated.name}",
+        details={
+            "changed_fields": sorted(payload.model_dump(exclude_unset=True).keys()),
+        },
+        ip_address=get_client_ip(request),
+    )
+
+    return updated
 
 
 @router.delete("/{plan_id}")
 def delete_plan(
     plan_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -82,7 +116,16 @@ def delete_plan(
             detail="Plan not found",
         )
 
+    plan_name = plan.name
     service.delete(plan)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="plan.deleted",
+        entity_type="plan",
+        entity_id=plan_id,
+        summary=f"Удалён тариф {plan_name}",
+        ip_address=get_client_ip(request),
+    )
 
     return {
         "success": True,

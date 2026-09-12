@@ -4,14 +4,17 @@ from fastapi import APIRouter
 from fastapi import BackgroundTasks
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
+from app.core.request import get_client_ip
 from app.schemas.order import OrderAccountAccessCreate
 from app.schemas.order import OrderCreate
 from app.schemas.order import OrderResponse
 from app.schemas.order import OrderUpdate
 from app.services.client_service import ClientService
+from app.services.audit_log_service import AuditLogService
 from app.services.order_service import OrderService
 from app.services.plan_service import PlanService
 from app.services.server_service import ServerService
@@ -43,13 +46,25 @@ def get_orders(
 )
 def create_order(
     payload: OrderCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
 
     validate_order_plan(payload, db)
 
-    return OrderService(db).create(payload)
+    created = OrderService(db).create(payload)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="order.created",
+        entity_type="order",
+        entity_id=created.id,
+        summary=f"Создан заказ #{created.id} для {created.client_email}",
+        details=order_audit_details(created),
+        ip_address=get_client_ip(request),
+    )
+
+    return created
 
 
 @router.post(
@@ -58,6 +73,7 @@ def create_order(
 )
 def create_account_access(
     payload: OrderAccountAccessCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -136,6 +152,16 @@ def create_account_access(
     if account_order is not None:
         service.inherit_account_credentials(order, account_order)
 
+    AuditLogService(db).record_admin(
+        current_user,
+        action="account.access_created",
+        entity_type="account",
+        entity_id=order.id,
+        summary=f"Создан доступ в личный кабинет для {client_email}",
+        details={"server_ids": server_ids},
+        ip_address=get_client_ip(request),
+    )
+
     return order
 
 
@@ -147,6 +173,7 @@ def update_order(
     order_id: int,
     payload: OrderUpdate,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -160,6 +187,7 @@ def update_order(
             detail="Order not found",
         )
 
+    previous_status = order.status
     validate_order_plan(payload, db, order)
 
     updated_order = service.update(order, payload)
@@ -171,12 +199,34 @@ def update_order(
             updated_order,
         )
 
+    action, summary = get_order_update_audit(
+        updated_order,
+        previous_status,
+        payload,
+    )
+    details = order_audit_details(updated_order)
+    details.update({
+        "previous_status": previous_status,
+        "changed_fields": sorted(payload.model_dump(exclude_unset=True).keys()),
+        "activation_error": bool(updated_order.activation_error),
+    })
+    AuditLogService(db).record_admin(
+        current_user,
+        action=action,
+        entity_type="order",
+        entity_id=updated_order.id,
+        summary=summary,
+        details=details,
+        ip_address=get_client_ip(request),
+    )
+
     return updated_order
 
 
 @router.delete("/{order_id}")
 def delete_order(
     order_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -190,10 +240,67 @@ def delete_order(
             detail="Order not found",
         )
 
+    order_summary = {
+        "id": order.id,
+        "client_email": order.client_email,
+        "status": order.status,
+        "amount": order.amount,
+        "currency": order.currency,
+    }
     service.delete(order)
+    AuditLogService(db).record_admin(
+        current_user,
+        action="order.deleted",
+        entity_type="order",
+        entity_id=order_id,
+        summary=f"Удалён заказ #{order_id} клиента {order_summary['client_email']}",
+        details=order_summary,
+        ip_address=get_client_ip(request),
+    )
 
     return {
         "success": True,
+    }
+
+
+def get_order_update_audit(order, previous_status, payload):
+    if payload.status == "paid" and order.activation_error:
+        return (
+            "order.activation_failed",
+            f"Ошибка выдачи доступа по заказу #{order.id}",
+        )
+
+    if payload.status == "paid" and previous_status != "paid":
+        return (
+            "order.payment_confirmed",
+            f"Подтверждена оплата заказа #{order.id} для {order.client_email}",
+        )
+
+    if payload.status == "paid":
+        return (
+            "order.activation_retried",
+            f"Повторная выдача доступа по заказу #{order.id}",
+        )
+
+    if payload.status == "canceled" and previous_status != "canceled":
+        return (
+            "order.canceled",
+            f"Отменён заказ #{order.id} клиента {order.client_email}",
+        )
+
+    return (
+        "order.updated",
+        f"Изменён заказ #{order.id} клиента {order.client_email}",
+    )
+
+
+def order_audit_details(order):
+    return {
+        "status": order.status,
+        "plan_name": order.plan_name,
+        "server_ids": normalize_server_ids(order.server_ids, order.server_id),
+        "amount": order.amount,
+        "currency": order.currency,
     }
 
 
