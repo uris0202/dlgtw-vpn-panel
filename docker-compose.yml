@@ -34,6 +34,60 @@ services:
     networks:
       - vpnpanel
 
+  db-backup:
+    image: postgres:17
+    container_name: vpnpanel-db-backup
+    restart: unless-stopped
+
+    init: true
+    read_only: true
+
+    env_file:
+      - .env
+
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGCONNECT_TIMEOUT: "10"
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-14}
+      BACKUP_RETRY_SECONDS: ${BACKUP_RETRY_SECONDS:-300}
+      BACKUP_VERIFY_RESTORE: ${BACKUP_VERIFY_RESTORE:-true}
+      BACKUP_HEALTH_MAX_AGE_MINUTES: ${BACKUP_HEALTH_MAX_AGE_MINUTES:-1560}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    entrypoint: ["/bin/sh", "/usr/local/bin/postgres-backup.sh"]
+
+    volumes:
+      - ./backups/postgres:/backups
+      - ./scripts/postgres-backup.sh:/usr/local/bin/postgres-backup.sh:ro
+      - ./scripts/postgres-restore.sh:/usr/local/bin/postgres-restore.sh:ro
+
+    tmpfs:
+      - /tmp
+
+    healthcheck:
+      test: ["CMD-SHELL", "find /backups/.last_success -mmin -$$BACKUP_HEALTH_MAX_AGE_MINUTES -print -quit 2>/dev/null | grep -q ."]
+      interval: 1m
+      timeout: 5s
+      retries: 3
+      start_period: 2m
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging: *default-logging
+
+    networks:
+      - vpnpanel
+
   backend:
     build: ./backend
     container_name: vpnpanel-backend

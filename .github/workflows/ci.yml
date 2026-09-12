@@ -10,6 +10,34 @@ permissions:
   contents: read
 
 jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: sh -n scripts/postgres-backup.sh scripts/postgres-restore.sh
+      - run: docker compose config --quiet
+      - run: docker compose up -d --wait postgres
+      - run: |
+          docker compose exec -T postgres psql -U vpnpanel -d vpnpanel -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE alembic_version (version_num varchar(32) PRIMARY KEY);
+          INSERT INTO alembic_version (version_num) VALUES ('ci_backup_probe');
+          CREATE TABLE backup_probe (id integer PRIMARY KEY, value text NOT NULL);
+          INSERT INTO backup_probe (id, value) VALUES (1, 'restorable');
+          SQL
+      - run: docker compose run --rm -e BACKUP_RUN_ONCE=true db-backup
+      - run: |
+          backup_path="$(find backups/postgres -maxdepth 1 -type f -name 'vpnpanel_[0-9]*.dump' | head -n 1)"
+          test -n "$backup_path"
+          docker compose run --rm --no-deps \
+            -e CONFIRM_RESTORE=RESTORE_NOW \
+            --entrypoint /bin/sh \
+            db-backup /usr/local/bin/postgres-restore.sh "/backups/$(basename "$backup_path")"
+          restored_value="$(docker compose exec -T postgres psql -U vpnpanel -d vpnpanel -Atqc 'SELECT value FROM backup_probe WHERE id = 1')"
+          test "$restored_value" = "restorable"
+      - if: always()
+        run: docker compose down -v
+
   backend:
     runs-on: ubuntu-latest
     defaults:
