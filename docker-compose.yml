@@ -89,7 +89,9 @@ services:
       - vpnpanel
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      target: application
     container_name: vpnpanel-backend
 
     restart: unless-stopped
@@ -105,6 +107,12 @@ services:
 
     expose:
       - "8000"
+
+    group_add:
+      - "42001"
+    volumes:
+      - ./relay:/app/relay
+      - vpn_monitor_data:/var/lib/vpnpanel-monitor:ro
     
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
@@ -120,6 +128,65 @@ services:
 
     networks:
       - vpnpanel
+
+  vpn-monitor:
+    build:
+      context: ./backend
+      target: vpn-monitor
+    container_name: vpnpanel-vpn-monitor
+    profiles: ["monitor"]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    command: ["python", "-m", "app.scripts.monitor_vpn_servers"]
+    env_file:
+      - .env
+    environment:
+      VPN_MONITOR_INTERVAL_SECONDS: ${VPN_MONITOR_INTERVAL_SECONDS:-3600}
+      VPN_MONITOR_CONFIRM_SECONDS: ${VPN_MONITOR_CONFIRM_SECONDS:-60}
+      VPN_MONITOR_STATE_DIR: /var/lib/vpnpanel-monitor
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./relay:/app/relay:ro
+      - vpn_monitor_data:/var/lib/vpnpanel-monitor
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.scripts.monitor_vpn_servers", "--health"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 3m
+    logging: *default-logging
+    networks:
+      - vpnpanel
+
+  vpn-relay:
+    image: haproxy:3.0-alpine
+    container_name: vpnpanel-vpn-relay
+    profiles: ["relay"]
+    restart: unless-stopped
+    network_mode: host
+    user: "0:0"
+    read_only: true
+    command: ["haproxy", "-W", "-db", "-S", "/app/relay/control/master.sock,mode,660,level,operator", "-f", "/app/relay/haproxy.cfg"]
+    volumes:
+      - ./relay:/app/relay:ro
+      - ./relay/control:/app/relay/control
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
 
   frontend:
     build: ./frontend
@@ -180,6 +247,7 @@ services:
 
 volumes:
   postgres_data:
+  vpn_monitor_data:
   caddy_data:
   caddy_config:
 

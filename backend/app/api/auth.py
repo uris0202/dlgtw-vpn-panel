@@ -4,7 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
-from app.auth.jwt import create_access_token
+from app.auth.jwt import create_admin_access_token
+from app.auth.jwt import create_two_factor_challenge_token
 from app.auth.password import hash_password, verify_password
 from app.core.config import settings
 from app.core.request import get_client_ip
@@ -12,6 +13,7 @@ from app.db.deps import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, UserResponse
 from app.services.audit_log_service import AuditLogService
+from app.services.admin_security_service import create_login_challenge
 from app.services.rate_limit import RateLimiter
 from app.services.user_service import UserService
 
@@ -117,7 +119,7 @@ def login(
         password_hash,
     )
 
-    if current is None or not password_valid:
+    if current is None or not current.is_admin or not password_valid:
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials",
@@ -125,12 +127,21 @@ def login(
 
     admin_login_limiter.reset(rate_limit_key)
 
-    token = create_access_token(
-        {
-            "sub": str(current.id),
-            "token_type": "admin",
+    if current.totp_enabled:
+        challenge_id, challenge_hash = create_login_challenge()
+        current.two_factor_challenge_hash = challenge_hash
+        db.commit()
+
+        return {
+            "requires_2fa": True,
+            "challenge_token": create_two_factor_challenge_token(
+                current,
+                challenge_id,
+            ),
+            "expires_in_seconds": settings.ADMIN_2FA_CHALLENGE_EXPIRE_MINUTES * 60,
         }
-    )
+
+    token = create_admin_access_token(current)
     AuditLogService(db).record_admin(
         current,
         action="admin.login",
@@ -143,6 +154,7 @@ def login(
     return {
         "access_token": token,
         "token_type": "bearer",
+        "requires_2fa": False,
     }
 
 

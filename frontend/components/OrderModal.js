@@ -89,11 +89,14 @@ export default function OrderModal({
     function toggleServer(serverId) {
         const normalizedServerId = Number(serverId);
         setSelectedServerIds((current) => {
+            if (selectedPlanServerLimit === 1) {
+                return [normalizedServerId];
+            }
             if (current.includes(normalizedServerId)) {
                 return current.filter((item) => item !== normalizedServerId);
             }
             if (selectedPlanServerLimit && current.length >= selectedPlanServerLimit) {
-                return selectedPlanServerLimit === 1 ? [normalizedServerId] : current;
+                return current;
             }
             return [...current, normalizedServerId];
         });
@@ -210,7 +213,7 @@ export default function OrderModal({
                                 const disabled = saving || (!selectedPlan && !isAccessStatus) || isServerDisabled(Number(server.id), selectedServerIds, selectedPlanServerLimit);
                                 return (
                                     <label key={server.id} className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 text-sm font-medium has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
-                                        <input type="checkbox" checked={selectedServerIds.includes(Number(server.id))} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary" />
+                                         <input type={selectedPlanServerLimit === 1 ? "radio" : "checkbox"} name={selectedPlanServerLimit === 1 ? "order-server" : undefined} checked={selectedServerIds.includes(Number(server.id))} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary" />
                                         <Server className="size-4 text-muted-foreground" />
                                         <span className="min-w-0 truncate">{server.name}</span>
                                     </label>

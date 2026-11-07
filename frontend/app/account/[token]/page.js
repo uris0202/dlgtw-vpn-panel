@@ -21,7 +21,9 @@ import {
 } from "lucide-react";
 
 import PublicHeader from "../../../components/PublicHeader";
+import NewsFeed from "../../../components/NewsFeed";
 import QRCodeCanvas from "../../../components/QRCodeCanvas";
+import SubscriptionConnect from "../../../components/SubscriptionConnect";
 import { Alert } from "../../../components/ui/alert";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -48,6 +50,7 @@ export default function ClientAccountPage() {
     const [settings, setSettings] = useState({});
     const [account, setAccount] = useState(null);
     const [subscriptions, setSubscriptions] = useState([]);
+    const [subscriptionUrl, setSubscriptionUrl] = useState("");
     const [orders, setOrders] = useState([]);
     const [plans, setPlans] = useState([]);
     const [servers, setServers] = useState([]);
@@ -143,6 +146,7 @@ export default function ClientAccountPage() {
             setSettings(data.settings || {});
             setAccount(data.account || null);
             setSubscriptions(data.subscriptions || []);
+            setSubscriptionUrl(data.subscription_url || "");
             setOrders(data.orders || []);
             setPlans(loadedPlans);
             setServers(loadedServers);
@@ -177,8 +181,9 @@ export default function ClientAccountPage() {
         const normalizedServerId = Number(serverId);
         const limit = serverSelection.requiredCount;
         setSelectedServerIds((current) => {
+            if (limit === 1) return [normalizedServerId];
             if (current.includes(normalizedServerId)) return current.filter((item) => item !== normalizedServerId);
-            if (current.length >= limit) return limit === 1 ? [normalizedServerId] : current;
+            if (current.length >= limit) return current;
             return [...current, normalizedServerId];
         });
     }
@@ -338,22 +343,29 @@ export default function ClientAccountPage() {
 
                 {!account?.has_password && <Alert className="mb-5">Задайте логин и пароль. После этого входить в кабинет можно будет без длинной персональной ссылки.</Alert>}
 
+                <NewsFeed compact limit={1} className="mb-6" />
+
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
                     <div className="grid gap-5">
                         <section>
-                            <div className="mb-3"><h2 className="m-0 text-base font-semibold">Подписка</h2><p className="mt-1 mb-0 text-sm text-muted-foreground">QR-коды и ссылки для подключения к доступным серверам</p></div>
+                            <div className="mb-3"><h2 className="m-0 text-base font-semibold">Подписка</h2></div>
+                            {subscriptionUrl && subscriptions.length > 0 && (
+                                <div className="mb-4 overflow-hidden rounded-lg border border-border bg-card">
+                                    <SubscriptionConnect value={subscriptionUrl} />
+                                </div>
+                            )}
                             {subscriptions.length === 0 ? (
                                 <Card className="flex min-h-40 flex-col items-center justify-center gap-2 p-6 text-center"><QrCode className="size-8 text-muted-foreground" /><div className="text-sm font-medium">Подписка ещё не активна</div><div className="text-sm text-muted-foreground">Ссылки появятся после подтверждения оплаты.</div></Card>
                             ) : (
                                 <div className="grid gap-4 2xl:grid-cols-2">
-                                    {subscriptions.map((subscription) => <SubscriptionCard key={subscription.server_id} subscription={subscription} />)}
+                                    {subscriptions.map((subscription) => <SubscriptionCard key={subscription.server_id} subscription={subscription} showLinks={settings.client_show_server_links === true} />)}
                                 </div>
                             )}
                         </section>
 
                         <Card id="renew-access" className="scroll-mt-5 overflow-hidden">
                             <div className="border-b border-border px-5 py-4"><h2 className="m-0 text-base font-semibold">Продлить доступ</h2><p className="mt-1 mb-0 text-sm text-muted-foreground">Выберите тариф и нужные VPN-серверы</p></div>
-                            <form onSubmit={submitRenew} className="grid gap-5 p-5">
+                            <form onSubmit={submitRenew} className="grid min-w-0 gap-5 p-5">
                                 <div className="grid gap-3 sm:grid-cols-2">
                                     {plans.map((plan) => {
                                         const selected = String(plan.id) === String(selectedPlanId);
@@ -370,14 +382,15 @@ export default function ClientAccountPage() {
                                 <div className="grid gap-2 sm:grid-cols-2">
                                     {servers.map((server) => {
                                         const selected = selectedServerIds.includes(Number(server.id));
-                                        const selectionLocked = serverSelection.allServersRequired && serverSelection.isComplete;
-                                        const disabled = selectionLocked || (
-                                            serverSelection.selectedCount >= serverSelection.requiredCount
-                                            && !selected
-                                        );
+                                         const selectionLocked = serverSelection.allServersRequired && serverSelection.isComplete;
+                                         const disabled = selectionLocked || (
+                                             serverSelection.requiredCount > 1
+                                             && serverSelection.selectedCount >= serverSelection.requiredCount
+                                             && !selected
+                                         );
                                         return (
                                             <label key={server.id} className={`flex min-h-12 items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] ${selectionLocked ? "cursor-default" : disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
-                                                <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary disabled:opacity-100" />
+                                                 <input type={serverSelection.requiredCount === 1 ? "radio" : "checkbox"} name={serverSelection.requiredCount === 1 ? "renew-server" : undefined} checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary disabled:opacity-100" />
                                                 <ServerIcon className="size-4 text-muted-foreground" />
                                                 <span className="min-w-0"><span className="block truncate font-medium">{server.name}</span><span className="block truncate text-xs text-muted-foreground">{server.country}</span></span>
                                             </label>
@@ -387,7 +400,7 @@ export default function ClientAccountPage() {
 
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <span className={`text-xs ${serverSelection.hasEnoughServers && serverSelection.isComplete ? "text-muted-foreground" : "text-destructive"}`}>{selectedPlan ? getServerSelectionMessage(serverSelection) : "Выберите тариф"}</span>
-                                    <Button type="submit" disabled={saving || plans.length === 0 || !serverSelection.hasEnoughServers || !serverSelection.isComplete}>{saving ? <Loader2 className="animate-spin" /> : <CreditCard />}{saving ? "Создание заказа..." : "Создать заказ на продление"}</Button>
+                                    <Button type="submit" className="h-auto min-h-9 min-w-0 whitespace-normal py-2 sm:h-9 sm:whitespace-nowrap sm:py-0" disabled={saving || plans.length === 0 || !serverSelection.hasEnoughServers || !serverSelection.isComplete}>{saving ? <Loader2 className="animate-spin" /> : <CreditCard />}{saving ? "Создание заказа..." : "Создать заказ на продление"}</Button>
                                 </div>
                             </form>
                         </Card>
@@ -419,7 +432,7 @@ function Summary({ icon: Icon, label, value }) {
     return <div className="min-w-0 p-4 sm:p-5"><Icon className="size-4 text-muted-foreground" /><div className="mt-2 truncate text-sm font-semibold" title={String(value || "-")}>{value || "-"}</div><div className="mt-0.5 text-[11px] text-muted-foreground">{label}</div></div>;
 }
 
-function SubscriptionCard({ subscription }) {
+function SubscriptionCard({ subscription, showLinks }) {
     return (
         <Card className="overflow-hidden">
             <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-4">
@@ -428,8 +441,7 @@ function SubscriptionCard({ subscription }) {
             </div>
             <div className="grid grid-cols-2 divide-x divide-border border-b border-border"><DetailBox label="Активно до" value={formatExpiry(subscription.expiry)} /><DetailBox label="Трафик" value={formatBytes(subscription.traffic)} /></div>
             {subscription.error && <Alert variant="error" className="m-4">{subscription.error}</Alert>}
-            <LinkSection title="VLESS" value={subscription.vless_url} />
-            <LinkSection title="Subscription URL" value={subscription.subscription_url} />
+            {showLinks && <LinkSection title="VLESS" value={subscription.vless_url} />}
         </Card>
     );
 }

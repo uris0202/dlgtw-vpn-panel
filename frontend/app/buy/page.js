@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import PublicHeader from "../../components/PublicHeader";
+import NewsFeed from "../../components/NewsFeed";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -159,8 +160,9 @@ export default function BuyPage() {
         const normalizedServerId = Number(serverId);
         const limit = serverSelection.requiredCount;
         setSelectedServerIds((current) => {
+            if (limit === 1) return [normalizedServerId];
             if (current.includes(normalizedServerId)) return current.filter((item) => item !== normalizedServerId);
-            if (current.length >= limit) return limit === 1 ? [normalizedServerId] : current;
+            if (current.length >= limit) return current;
             return [...current, normalizedServerId];
         });
     }
@@ -313,6 +315,8 @@ export default function BuyPage() {
             <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-9">
                 <div className="mb-6"><h1 className="m-0 text-2xl font-semibold">Купить VPN</h1><p className="mt-1.5 mb-0 text-sm text-muted-foreground">Выберите тариф и серверы, затем создайте заявку на подключение.</p></div>
 
+                <NewsFeed compact limit={1} className="mb-6" />
+
                 <div className="mb-5 grid gap-3">
                     {error && <Alert variant="error">{error}</Alert>}
                     {existingAccountToken && <Alert variant="info">У вас уже есть личный кабинет. <Link href={buildAccountUrl(existingAccountToken)} className="font-medium underline">Открыть кабинет</Link></Alert>}
@@ -342,14 +346,15 @@ export default function BuyPage() {
                             <div className="grid gap-2 sm:grid-cols-2">
                                 {servers.map((server) => {
                                     const selected = selectedServerIds.includes(Number(server.id));
-                                    const selectionLocked = serverSelection.allServersRequired && serverSelection.isComplete;
-                                    const disabled = selectionLocked || (
-                                        serverSelection.selectedCount >= serverSelection.requiredCount
-                                        && !selected
-                                    );
+                                     const selectionLocked = serverSelection.allServersRequired && serverSelection.isComplete;
+                                     const disabled = selectionLocked || (
+                                         serverSelection.requiredCount > 1
+                                         && serverSelection.selectedCount >= serverSelection.requiredCount
+                                         && !selected
+                                     );
                                     return (
                                         <label key={server.id} className={`flex min-h-12 items-center gap-3 rounded-md border border-border bg-card px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-[#eff4ff] ${selectionLocked ? "cursor-default" : disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
-                                            <input type="checkbox" checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary disabled:opacity-100" />
+                                             <input type={serverSelection.requiredCount === 1 ? "radio" : "checkbox"} name={serverSelection.requiredCount === 1 ? "purchase-server" : undefined} checked={selected} onChange={() => toggleServer(server.id)} disabled={disabled} className="size-4 accent-primary disabled:opacity-100" />
                                             <ServerIcon className="size-4 text-muted-foreground" />
                                             <span className="min-w-0"><span className="block truncate font-medium">{server.name}</span><span className="block truncate text-xs text-muted-foreground">{server.country}</span></span>
                                         </label>

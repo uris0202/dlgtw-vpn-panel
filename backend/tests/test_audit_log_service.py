@@ -19,6 +19,9 @@ class AuditLogSecurityTests(unittest.TestCase):
             "nested": {
                 "telegram_bot_token": "secret-token",
                 "account_token": "secret-account-token",
+                "totp_secret_encrypted": "encrypted-secret",
+                "recovery_codes": ["ABCDE-FGHIJ"],
+                "code": "123456",
                 "server_ids": [1, 2],
             },
         })
@@ -27,6 +30,9 @@ class AuditLogSecurityTests(unittest.TestCase):
         self.assertNotIn("password", sanitized)
         self.assertNotIn("telegram_bot_token", sanitized["nested"])
         self.assertNotIn("account_token", sanitized["nested"])
+        self.assertNotIn("totp_secret_encrypted", sanitized["nested"])
+        self.assertNotIn("recovery_codes", sanitized["nested"])
+        self.assertNotIn("code", sanitized["nested"])
         self.assertEqual(sanitized["nested"]["server_ids"], [1, 2])
 
 

@@ -4,6 +4,9 @@ from urllib.parse import quote
 from urllib.parse import urlencode
 from urllib.parse import urlparse
 
+from app.services.relay_service import connection_endpoint
+from app.services.subscription_service import active_subscription
+
 
 DEFAULT_SUBSCRIPTION_PORT = os.getenv(
     "XUI_SUBSCRIPTION_PORT",
@@ -24,10 +27,11 @@ def attach_client_links(
 ):
 
     links_by_email = {}
+    requested_emails = {client.get("email") for client in clients}
 
     for inbound in inbounds:
 
-        if inbound.get("protocol") != "vless":
+        if inbound.get("protocol") != "vless" or not inbound.get("enable", True):
             continue
 
         settings = load_json(inbound.get("settings"))
@@ -37,18 +41,25 @@ def attach_client_links(
 
             email = client.get("email")
 
-            if not email:
+            if not email or email not in requested_emails:
                 continue
 
+            vless_url = build_vless_url(
+                server=server,
+                inbound=inbound,
+                client=client,
+                stream_settings=stream_settings,
+            )
+            previous_links = links_by_email.get(email, {}).get("vless_urls", [])
+            profile_active = active_subscription({
+                "enabled": inbound.get("enable", True) and client.get("enable", True),
+                "expiry": client.get("expiryTime", 0),
+            })
             links_by_email[email] = {
                 "uuid": client.get("id") or client.get("uuid"),
                 "inbound_id": inbound.get("id"),
-                "vless_url": build_vless_url(
-                    server=server,
-                    inbound=inbound,
-                    client=client,
-                    stream_settings=stream_settings,
-                ),
+                "vless_url": vless_url,
+                "vless_urls": previous_links + ([vless_url] if vless_url and profile_active else []),
                 "subscription_url": build_subscription_url(
                     server=server,
                     client=client,
@@ -65,6 +76,7 @@ def attach_client_links(
             "uuid": client_links.get("uuid"),
             "inbound_id": client_links.get("inbound_id"),
             "vless_url": client_links.get("vless_url"),
+            "vless_urls": client_links.get("vless_urls", []),
             "subscription_url": client_links.get("subscription_url"),
         })
 
@@ -102,7 +114,19 @@ def build_vless_url(server, inbound, client, stream_settings):
     params["security"] = security
     params["type"] = network
 
-    label = quote(build_label(inbound, client), safe="")
+    endpoint = connection_endpoint(server, inbound)
+    if endpoint:
+        if security == "tls" and not params.get("sni"):
+            params["sni"] = host
+        if network in {"ws", "httpupgrade", "xhttp"} and not params.get("host"):
+            params["host"] = host
+        host, port = endpoint
+
+        # Unified public TLS entry for all VPN subscriptions.
+        port = 443
+
+    host = f"[{host}]" if ":" in host else host
+    label = quote(f"{server.name} · {build_label(inbound, client)}", safe="")
     query = urlencode(order_vless_params(params))
 
     return f"vless://{client_id}@{host}:{port}?{query}#{label}"
@@ -205,8 +229,10 @@ def add_security_params(params, security, stream_settings, client):
         if short_id:
             params["sid"] = short_id
 
-        if reality_client_settings.get("serverName"):
-            params["sni"] = reality_client_settings["serverName"]
+        preferred_sni = reality_client_settings.get("serverName")
+
+        if preferred_sni and preferred_sni in server_names:
+            params["sni"] = preferred_sni
         elif server_names:
             params["sni"] = server_names[0]
 

@@ -31,3 +31,33 @@ def create_access_token(
         settings.JWT_SECRET,
         algorithm=ALGORITHM,
     )
+
+
+def create_admin_access_token(user):
+    return create_access_token(
+        {
+            "sub": str(user.id),
+            "token_type": "admin",
+            "session_version": int(user.session_version or 0),
+        }
+    )
+
+
+def create_two_factor_challenge_token(user, challenge_id: str):
+    return create_access_token(
+        {
+            "sub": str(user.id),
+            "token_type": "admin_2fa",
+            "session_version": int(user.session_version or 0),
+            "challenge_id": challenge_id,
+        },
+        expires_minutes=settings.ADMIN_2FA_CHALLENGE_EXPIRE_MINUTES,
+    )
+
+
+def decode_token(token: str):
+    return jwt.decode(
+        token,
+        settings.JWT_SECRET,
+        algorithms=[ALGORITHM],
+    )

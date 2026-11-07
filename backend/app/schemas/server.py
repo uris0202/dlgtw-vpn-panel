@@ -30,6 +30,7 @@ class ServerResponse(BaseModel):
     base_path: str
     username: str
     enabled: bool
+    relay: dict | None = None
 
     class Config:
         from_attributes = True

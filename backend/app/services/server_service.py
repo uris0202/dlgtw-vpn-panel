@@ -18,6 +18,9 @@ class ServerService:
     def get(self, server_id: int):
         return self.db.get(Server, server_id)
 
+    def get_for_update(self, server_id: int):
+        return self.db.query(Server).filter(Server.id == server_id).with_for_update().first()
+
     def create(self, data):
         values = data.model_dump(mode="json")
 

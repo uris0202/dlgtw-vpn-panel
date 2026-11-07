@@ -21,3 +21,7 @@ backend/.pytest_cache/
 .DS_Store
 Thumbs.db
 *.lnk
+
+# Generated relay endpoints (recreated on the server)
+relay/*
+!relay/.gitignore

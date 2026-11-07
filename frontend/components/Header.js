@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
     LogOut,
     UserRound,
@@ -16,14 +17,16 @@ export default function Header({ user, onLogout }) {
             </div>
 
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-                <div className="hidden min-w-0 items-center gap-2 sm:flex">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
-                        <UserRound className="size-4" />
-                    </div>
-                    <span className="max-w-52 truncate text-sm font-medium text-foreground">
-                        {user?.email || "Администратор"}
-                    </span>
-                </div>
+                <Button asChild variant="ghost" className="h-10 min-w-0 px-2">
+                    <Link href="/profile" title="Профиль и безопасность">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                            <UserRound className="size-4" />
+                        </span>
+                        <span className="hidden max-w-52 truncate text-sm font-medium text-foreground sm:block">
+                            {user?.email || "Администратор"}
+                        </span>
+                    </Link>
+                </Button>
 
                 <Button
                     type="button"

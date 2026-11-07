@@ -32,6 +32,7 @@ test("single-server plan preserves one valid selection", () => {
     assert.deepEqual(selected, [2]);
     assert.equal(status.isComplete, true);
     assert.equal(status.allServersRequired, false);
+    assert.match(getServerSelectionMessage(status), /переключить на другой/i);
 });
 
 

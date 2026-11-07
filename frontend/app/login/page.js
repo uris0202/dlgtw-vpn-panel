@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, LockKeyhole, Mail, ShoppingCart, UserRound } from "lucide-react";
+import {
+    ArrowLeft,
+    KeyRound,
+    Loader2,
+    LockKeyhole,
+    Mail,
+    ShieldCheck,
+    ShoppingCart,
+    UserRound,
+} from "lucide-react";
 
 import AuthShell from "../../components/AuthShell";
 import { Alert } from "../../components/ui/alert";
@@ -15,6 +24,8 @@ export default function LoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [challengeToken, setChallengeToken] = useState("");
+    const [verificationCode, setVerificationCode] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -24,13 +35,89 @@ export default function LoginPage() {
         setLoading(true);
         try {
             const response = await api.post("/auth/login", { email: email.trim(), password });
-            localStorage.setItem("token", response.data.access_token);
-            router.push(getNextPath());
+
+            if (response.data?.requires_2fa) {
+                if (!response.data.challenge_token) {
+                    throw new Error("Сервер не вернул данные для подтверждения входа.");
+                }
+
+                setChallengeToken(response.data.challenge_token);
+                setVerificationCode("");
+                setPassword("");
+                return;
+            }
+
+            completeLogin(response.data, router);
         } catch (error) {
             setError(getErrorMessage(error, "Неверный логин или пароль"));
         } finally {
             setLoading(false);
         }
+    }
+
+    async function verifyTwoFactor(event) {
+        event.preventDefault();
+        setError("");
+        setLoading(true);
+
+        try {
+            const response = await api.post("/auth/2fa/verify", {
+                challenge_token: challengeToken,
+                code: verificationCode.trim(),
+            });
+            completeLogin(response.data, router);
+        } catch (error) {
+            setError(getErrorMessage(error, "Не удалось подтвердить вход."));
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function returnToPassword() {
+        setChallengeToken("");
+        setVerificationCode("");
+        setError("");
+    }
+
+    if (challengeToken) {
+        return (
+            <AuthShell
+                title="Подтверждение входа"
+                description="Двухфакторная защита администратора"
+                footer={(
+                    <Button type="button" variant="ghost" onClick={returnToPassword} className="mx-auto">
+                        <ArrowLeft />Вернуться к паролю
+                    </Button>
+                )}
+            >
+                <form onSubmit={verifyTwoFactor} className="grid gap-4">
+                    <Alert>
+                        Введите код из приложения-аутентификатора. Вместо него можно использовать один резервный код.
+                    </Alert>
+                    <Field label="Код подтверждения" icon={KeyRound}>
+                        <Input
+                            type="text"
+                            value={verificationCode}
+                            onChange={(event) => setVerificationCode(event.target.value.toUpperCase())}
+                            placeholder="123456"
+                            autoComplete="one-time-code"
+                            autoCapitalize="characters"
+                            inputMode="text"
+                            className="pl-9 font-mono"
+                            minLength={6}
+                            maxLength={32}
+                            required
+                            autoFocus
+                        />
+                    </Field>
+                    {error && <Alert variant="error">{error}</Alert>}
+                    <Button type="submit" size="lg" disabled={loading} className="w-full">
+                        {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+                        {loading ? "Проверка..." : "Подтвердить вход"}
+                    </Button>
+                </form>
+            </AuthShell>
+        );
     }
 
     return (
@@ -79,4 +166,13 @@ function getErrorMessage(error, fallback) {
 function getNextPath() {
     const nextPath = new URLSearchParams(window.location.search).get("next");
     return nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard";
+}
+
+function completeLogin(data, router) {
+    if (!data?.access_token) {
+        throw new Error("Сервер не вернул токен доступа.");
+    }
+
+    localStorage.setItem("token", data.access_token);
+    router.replace(getNextPath());
 }

@@ -3,18 +3,15 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.security import HTTPBearer
 
-from jose import jwt
 from jose import JWTError
 
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
 from app.models.user import User
-from app.core.config import settings
+from app.auth.jwt import decode_token
 
 security = HTTPBearer()
-
-ALGORITHM = "HS256"
 
 
 def get_current_user(
@@ -24,16 +21,17 @@ def get_current_user(
 
     try:
 
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.JWT_SECRET,
-            algorithms=[ALGORITHM],
-        )
+        payload = decode_token(credentials.credentials)
 
-        if payload.get("token_type") == "client":
+        token_type = payload.get("token_type")
+
+        # Tokens issued before session versioning did not carry a type.
+        # Keep them valid until the first security-sensitive session rotation.
+        if token_type not in {None, "admin"}:
             raise JWTError
 
         user_id = int(payload["sub"])
+        session_version = int(payload.get("session_version", 0))
 
     except (JWTError, KeyError, TypeError, ValueError):
 
@@ -47,11 +45,15 @@ def get_current_user(
         user_id,
     )
 
-    if user is None:
+    if (
+        user is None
+        or not user.is_admin
+        or int(user.session_version or 0) != session_version
+    ):
 
         raise HTTPException(
             status_code=401,
-            detail="User not found",
+            detail="Session expired",
         )
 
     return user

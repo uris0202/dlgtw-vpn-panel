@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from datetime import timezone
 import logging
+import hmac
 from types import SimpleNamespace
 
 from fastapi import APIRouter
@@ -30,6 +31,10 @@ from app.services.plan_service import PlanService
 from app.services.rate_limit import RateLimiter
 from app.services.server_service import ServerService
 from app.services.settings_service import SettingsService
+from app.services.subscription_service import entitled_server_ids
+from app.services.subscription_service import encode_subscription
+from app.services.subscription_service import subscription_signature
+from app.services.subscription_service import subscription_url
 from app.services.telegram_service import TelegramNotificationService
 from app.services.vless_service import attach_client_links
 from app.services.xui_service import XUIService
@@ -62,6 +67,7 @@ payment_notification_limiter = RateLimiter(
     limit=5,
     window_seconds=3600,
 )
+subscription_limiter = RateLimiter(limit=30, window_seconds=60)
 
 
 class PublicOrderCreate(BaseModel):
@@ -190,6 +196,39 @@ def create_public_order(
         )
 
     return build_payment_response(db, order)
+
+
+@router.get("/subscriptions/{order_id}/{token}", response_class=Response)
+def get_combined_subscription(
+    order_id: int,
+    token: str,
+    db: Session = Depends(get_db),
+):
+    service = OrderService(db)
+    anchor = service.get(order_id)
+    if (
+        anchor is None
+        or not anchor.account_token
+        or len(token) != 64
+        or not token.isascii()
+        or not hmac.compare_digest(token, subscription_signature(anchor, app_settings.JWT_SECRET))
+    ):
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if not subscription_limiter.allow(str(anchor.id)):
+        raise HTTPException(status_code=429, detail="Try again later", headers={"Retry-After": "60"})
+    orders = service.get_all_by_account_token(anchor.account_token)
+    items = build_subscriptions(db, anchor.client_email, orders)
+    if any(item.get("error") for item in items):
+        raise HTTPException(status_code=503, detail="VPN server temporarily unavailable", headers={"Retry-After": "60"})
+    return Response(
+        content=encode_subscription(items),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-store",
+            "profile-title": "DLGTW VPN",
+            "profile-update-interval": "1",
+        },
+    )
 
 
 @router.post("/account/login")
@@ -465,11 +504,26 @@ def build_account_response(db, anchor_order):
         anchor_order.client_email,
         orders,
     )
+    public_settings = get_public_settings(db)
+    account_subscriptions = subscriptions
+    if not public_settings["client_show_server_links"]:
+        # Only the account response is filtered; VPN subscription profiles stay intact.
+        visible_fields = {
+            "server_id", "server_name", "country", "email", "enabled", "traffic",
+            "up", "down", "expiry", "total_gb", "last_online", "error",
+        }
+        account_subscriptions = [
+            {key: value for key, value in item.items() if key in visible_fields}
+            for item in subscriptions
+        ]
 
     return {
-        "settings": get_public_settings(db),
+        "settings": public_settings,
         "account": build_account_summary(anchor_order, orders, subscriptions),
-        "subscriptions": subscriptions,
+        "subscriptions": account_subscriptions,
+        "subscription_url": subscription_url(
+            anchor_order, app_settings.PUBLIC_BASE_URL, app_settings.JWT_SECRET,
+        ),
         "orders": [serialize_order(order) for order in orders],
         "pending_payment": (
             build_payment_response(db, pending_order)
@@ -755,6 +809,7 @@ def get_public_settings(db):
 
     return {
         "panel_name": settings.panel_name,
+        "client_show_server_links": settings.client_show_server_links,
         "support_contact": settings.support_contact,
         "payment_phone": settings.payment_phone,
         "payment_recipient": settings.payment_recipient,
@@ -795,7 +850,7 @@ def get_public_servers(db):
 
 def build_subscriptions(db, client_email, orders):
 
-    server_ids = collect_server_ids(orders)
+    server_ids = entitled_server_ids(orders)
     server_service = ServerService(db)
     settings = SettingsService(db).get()
     servers = []
@@ -803,6 +858,8 @@ def build_subscriptions(db, client_email, orders):
     for server_id in server_ids:
         server = server_service.get(server_id)
 
+        if server and not server.enabled:
+            continue
         if server:
             servers.append(server_ref(server))
         else:
@@ -846,6 +903,7 @@ def build_subscription(
         "down": 0,
         "expiry": 0,
         "vless_url": "",
+        "vless_urls": [],
         "subscription_url": "",
         "error": "",
     }
@@ -853,11 +911,18 @@ def build_subscription(
 
     try:
         xui = XUIService.connect(server)
-        data = xui.get_all()
-        clients = [
-            format_client(item)
-            for item in data.get("items", [])
-        ]
+        clients = []
+        page = 1
+        while True:
+            data = xui.get_all(page=page, page_size=200)
+            clients = [
+                format_client(raw_client)
+                for raw_client in data.get("items", [])
+                if (raw_client.get("email") or "").strip() == client_email.strip()
+            ]
+            if clients or not data.get("items") or page * 200 >= int(data.get("total") or 0):
+                break
+            page += 1
         clients = attach_client_links(
             server=server,
             clients=clients,
@@ -905,6 +970,7 @@ def format_client(item):
         "expiry": item.get("expiryTime", item.get("expiry", 0)),
         "created": item.get("createdAt", 0),
         "updated": item.get("updatedAt", 0),
+        "total_gb": item.get("totalGB", traffic.get("total", 0)),
     }
 
 

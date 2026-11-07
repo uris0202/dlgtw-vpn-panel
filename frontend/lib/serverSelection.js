@@ -70,6 +70,12 @@ export function getServerSelectionMessage(selection) {
         return "Все доступные серверы включены в тариф и выбраны автоматически.";
     }
 
+    if (selection.requiredCount === 1) {
+        return selection.isComplete
+            ? "Выбран один сервер. Можно переключить на другой."
+            : "Выберите один сервер.";
+    }
+
     return `Выбрано ${selection.selectedCount} из ${selection.requiredCount} серверов.`;
 }
 

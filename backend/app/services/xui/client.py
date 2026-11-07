@@ -16,11 +16,19 @@ class XUIClient:
         self.host = host.rstrip("/")
         self.base_path = "/" + base_path.strip("/") if base_path else ""
 
+        transport = httpx.HTTPTransport(
+            verify=verify,
+            local_address="0.0.0.0",
+            retries=1,
+            trust_env=False,
+        )
         self.client = httpx.Client(
             base_url=self.host + self.base_path,
-            verify=verify,
+            transport=transport,
             follow_redirects=True,
-            timeout=REQUEST_TIMEOUT,
+            timeout=httpx.Timeout(REQUEST_TIMEOUT, connect=min(3.0, REQUEST_TIMEOUT)),
+            trust_env=False,
+            event_hooks={"request": [self._check_origin]},
         )
 
         self.csrf = None
@@ -28,6 +36,11 @@ class XUIClient:
         self.client.headers.update({
             "X-Requested-With": "XMLHttpRequest",
         })
+
+    def _check_origin(self, request):
+        origin = httpx.URL(self.host)
+        if (request.url.scheme, request.url.host, request.url.port) != (origin.scheme, origin.host, origin.port):
+            raise httpx.RequestError("3X-UI redirect to another origin is not allowed", request=request)
 
     def _csrf_url(self):
         return "/csrf-token"

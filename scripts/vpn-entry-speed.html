@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Проверка VPN</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f7f8fa;color:#17212b;font:15px/1.5 system-ui,sans-serif;letter-spacing:0}main{max-width:760px;margin:0 auto;padding:28px 18px}h1{font-size:24px;margin:0 0 20px}h2{font-size:16px;margin:28px 0 12px}dl{margin:0;border-top:1px solid #d8dee5}dl>div{display:grid;grid-template-columns:140px minmax(0,1fr);gap:16px;padding:12px 0;border-bottom:1px solid #d8dee5}dt{color:#627080}dd{margin:0;overflow-wrap:anywhere}.actions{display:flex;gap:10px;margin-top:22px}button{min-height:42px;padding:8px 18px;border:1px solid #253d36;border-radius:6px;background:#17684d;color:white;font:inherit;font-weight:600;cursor:pointer}button.secondary{background:white;color:#17212b;border-color:#c6ced8}button:disabled{opacity:.5;cursor:default}#message{min-height:48px;margin-top:16px;font-size:14px;overflow-wrap:anywhere}#message.error{color:#ae2626}#message.success{color:#17684d}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:10px 6px;border-bottom:1px solid #d8dee5;vertical-align:top;overflow-wrap:anywhere}th{color:#627080;font-weight:500}.history{overflow-x:auto}.muted{color:#627080;font-size:13px}progress{display:block;width:100%;height:7px;margin:20px 0;accent-color:#17684d}@media(max-width:420px){dl>div{grid-template-columns:108px minmax(0,1fr);gap:12px}.actions button{flex:1;padding-inline:10px}}
+</style>
+</head>
+<body><main>
+<h1>Проверка VPN</h1>
+<dl>
+<div><dt>Тестовый вход</dt><dd id="entry">Загрузка…</dd></div>
+<div><dt>Работает до</dt><dd id="expiry">—</dd></div>
+<div><dt>IP выхода</dt><dd id="exit">—</dd></div>
+<div><dt>Загрузка</dt><dd><b id="speed">—</b></dd></div>
+<div><dt>Получено</dt><dd id="received">—</dd></div>
+</dl>
+<progress id="progress" max="33554432" value="0" aria-label="Получено данных"></progress>
+<div class="actions"><button id="start" disabled>Проверить</button><button id="stop" class="secondary" disabled>Остановить</button></div>
+<div id="message" role="status" aria-live="polite"></div>
+<p class="muted">До 32 МиБ за замер · до 20 секунд загрузки</p>
+<h2>Результаты</h2>
+<div class="history"><table><thead><tr><th>Время</th><th>IP выхода</th><th>Мбит/с</th><th>МиБ</th></tr></thead><tbody id="results"></tbody></table></div>
+</main>
+<script>
+const LIMIT=33554432;
+const $=id=>document.getElementById(id);
+let config=null,controller=null;
+function message(text,tone=""){$("message").textContent=text;$("message").className=tone;}
+function addResult(ip,mbps,bytes){const row=document.createElement("tr");for(const value of[new Date().toLocaleTimeString("ru-RU"),ip,mbps.toFixed(1),(bytes/1048576).toFixed(1)]){const cell=document.createElement("td");cell.textContent=value;row.append(cell);}$("results").prepend(row);while($("results").children.length>6)$("results").lastElementChild.remove();}
+async function load(){try{const response=await fetch("/status",{cache:"no-store"});if(!response.ok)throw Error("Тестовый вход недоступен.");config=await response.json();$("entry").textContent=config.entry_ip;$("expiry").textContent=new Date(config.expires_at).toLocaleTimeString("ru-RU");$("start").disabled=false;}catch(error){message(error.message,"error");}}
+$("stop").onclick=()=>controller?.abort();
+$("start").onclick=async()=>{
+ if(controller)return;
+ if(!config||Date.now()>Date.parse(config.expires_at)){message("Время работы тестового входа истекло.","error");return;}
+ controller=new AbortController();const signal=controller.signal;
+ $("start").disabled=true;$("stop").disabled=false;$("progress").value=0;$("speed").textContent="—";$("received").textContent="—";$("exit").textContent="—";
+ let timer=setTimeout(()=>controller?.abort(),6000),reader=null,bytes=0,started=0,ip="—";
+ try{
+  message("Проверка IP выхода…");
+  const trace=await fetch("https://speed.cloudflare.com/cdn-cgi/trace?test="+Date.now(),{signal,cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"});
+  if(!trace.ok)throw Error("Не удалось проверить IP выхода.");
+  const text=await trace.text();ip=text.split("\n").find(line=>line.startsWith("ip="))?.slice(3)||"—";
+  $("exit").textContent=ip;
+  clearTimeout(timer);timer=setTimeout(()=>controller?.abort(),20000);
+  message("Измерение загрузки…");started=performance.now();
+  const response=await fetch("https://speed.cloudflare.com/__down?bytes="+LIMIT+"&test="+Date.now(),{signal,cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer"});
+  if(!response.ok||!response.body)throw Error("Сервер замера недоступен.");
+  const downloadIp=response.headers.get("cf-meta-ip");if(downloadIp){ip=downloadIp;$("exit").textContent=ip;}
+  reader=response.body.getReader();
+  while(bytes<LIMIT){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;$("progress").value=Math.min(bytes,LIMIT);$("received").textContent=(bytes/1048576).toFixed(1)+" МиБ";}
+  await reader.cancel();
+  const seconds=(performance.now()-started)/1000;if(bytes<LIMIT||seconds<=0)throw Error("Получен неполный ответ. Замер не засчитан.");
+  const mbps=bytes*8/seconds/1000000;$("speed").textContent=mbps.toFixed(1)+" Мбит/с";addResult(ip,mbps,bytes);
+  const known=config.upstream_ips.includes(ip);
+  message(known?"IP выхода совпадает с одним из VPN-серверов. Замер завершён.":"Замер завершён. IP выхода отличается от сохранённых IPv4 VPN-серверов: проверь маршрут браузера. Возможен другой выходной адрес.",known?"success":"");
+ }catch(error){message(error.name==="AbortError"?"Замер остановлен или превышено время ожидания. Частичный результат не засчитан.":error.message,"error");}
+ finally{clearTimeout(timer);if(reader)try{await reader.cancel();}catch{}controller=null;$("start").disabled=false;$("stop").disabled=true;}
+};
+load();
+</script>
+</body></html>

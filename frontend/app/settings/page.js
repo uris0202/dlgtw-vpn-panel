@@ -14,6 +14,7 @@ import {
     Send,
     Trash2,
     UserPlus,
+    UserRound,
 } from "lucide-react";
 
 import AdminLayout from "../../components/AdminLayout";
@@ -82,6 +83,7 @@ export default function SettingsPage() {
                 subscription_port: Number(form.subscription_port),
                 subscription_path: form.subscription_path.trim(),
                 support_contact: form.support_contact.trim(),
+                client_show_server_links: form.client_show_server_links,
                 payment_phone: form.payment_phone.trim(),
                 payment_recipient: form.payment_recipient.trim(),
                 payment_instructions: form.payment_instructions.trim(),
@@ -216,6 +218,13 @@ export default function SettingsPage() {
                             </Field>
                         </SettingsSection>
 
+                        <SettingsSection icon={UserRound} title="Личный кабинет" description="Единая подписка доступна всегда">
+                            <label className="flex cursor-pointer items-start gap-3 text-sm font-medium">
+                                <input type="checkbox" checked={form.client_show_server_links} onChange={(event) => updateField("client_show_server_links", event.target.checked)} disabled={saving} className="mt-0.5 size-4 shrink-0 accent-primary" />
+                                Показывать отдельные ссылки и QR-коды серверов
+                            </label>
+                        </SettingsSection>
+
                         <SettingsSection icon={Bot} title="Telegram" description="Уведомления о новых заказах, оплате и активации">
                             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-3">
                                 <label className="flex cursor-pointer items-center gap-3 text-sm font-medium">
@@ -305,6 +314,7 @@ function getEmptyForm() {
         subscription_port: "2096",
         subscription_path: "subs",
         support_contact: "",
+        client_show_server_links: false,
         payment_phone: "",
         payment_recipient: "",
         payment_instructions: "",
@@ -324,6 +334,7 @@ function settingsToForm(settings) {
         subscription_port: String(settings.subscription_port ?? 2096),
         subscription_path: settings.subscription_path || "subs",
         support_contact: settings.support_contact || "",
+        client_show_server_links: settings.client_show_server_links === true,
         payment_phone: settings.payment_phone || "",
         payment_recipient: settings.payment_recipient || "",
         payment_instructions: settings.payment_instructions || "",

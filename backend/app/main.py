@@ -16,6 +16,9 @@ from app.api.orders import router as orders_router
 from app.api.public import router as public_router
 from app.api.accounts import router as accounts_router
 from app.api.audit_logs import router as audit_logs_router
+from app.api.admin_security import router as admin_security_router
+from app.api.news import router as news_router, public_router as public_news_router
+from app.api.public_status import router as public_status_router
 
 import app.models.user
 import app.models.server
@@ -23,6 +26,7 @@ import app.models.settings
 import app.models.plan
 import app.models.order
 import app.models.audit_log
+import app.models.news
 
 from app.db.database import Base
 from app.db.database import engine
@@ -55,6 +59,10 @@ app.include_router(orders_router)
 app.include_router(public_router)
 app.include_router(accounts_router)
 app.include_router(audit_logs_router)
+app.include_router(admin_security_router)
+app.include_router(news_router)
+app.include_router(public_news_router)
+app.include_router(public_status_router)
 
 
 @app.get("/")

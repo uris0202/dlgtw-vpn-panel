@@ -178,8 +178,11 @@ export default function OrdersPage() {
         setPageError("");
         setActionOrderId(order.id);
         try {
-            await api.patch(`/orders/${order.id}`, { status }, getAuthConfig());
+            const response = await api.patch(`/orders/${order.id}`, { status }, getAuthConfig());
             await loadOrders();
+            if (status === "paid" && response.data?.activation_error) {
+                setPageError(`Оплата подтверждена, но доступ не выдан: ${response.data.activation_error}`);
+            }
         } catch (error) {
             setPageError(getErrorMessage(error, "Не удалось изменить статус заказа."));
         } finally {

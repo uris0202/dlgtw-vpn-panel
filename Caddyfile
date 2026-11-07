@@ -1,5 +1,16 @@
 {
 	email admin@dlgtw.ru
+	servers :443 {
+		listener_wrappers {
+			proxy_protocol {
+				timeout 2s
+				# Managed by install.py: only the local Edge and Docker gateway.
+				allow 127.0.0.1/32 172.19.0.1/32 ::1/128
+				fallback_policy reject
+			}
+			tls
+		}
+	}
 }
 
 dlgtw.ru {

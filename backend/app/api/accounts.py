@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user
 from app.db.deps import get_db
 from app.models.user import User
+from app.core.config import settings
 from app.schemas.client import ClientUpdate
 from app.services.client_service import ClientService
 from app.services.order_service import OrderService
 from app.services.server_service import ServerService
+from app.services.subscription_service import subscription_url
 
 
 router = APIRouter(
@@ -137,6 +139,7 @@ def serialize_account(db, orders):
 
     return {
         "account_token": latest_order.account_token,
+        "subscription_url": subscription_url(min(orders, key=lambda order: order.id), settings.PUBLIC_BASE_URL, settings.JWT_SECRET),
         "client_email": latest_order.client_email,
         "customer_contact": latest_order.customer_contact,
         "account_login": account_login,

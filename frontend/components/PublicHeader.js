@@ -1,6 +1,8 @@
 import Link from "next/link";
 import {
     ShieldCheck,
+    Activity,
+    Newspaper,
     ShoppingCart,
     UserRound,
 } from "lucide-react";
@@ -10,8 +12,8 @@ import { cn } from "../lib/utils";
 export default function PublicHeader({ panelName = "DLGTW VPN", actions, compact = false }) {
     return (
         <header className="border-b border-border bg-card">
-            <div className={cn("mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-6", compact ? "max-w-5xl" : "max-w-7xl")}>
-                <Link href="/buy" className="flex min-w-0 items-center gap-3 text-foreground no-underline">
+            <div className={cn("mx-auto flex h-16 w-full items-center justify-between gap-2 px-4 sm:gap-4 sm:px-6", compact ? "max-w-5xl" : "max-w-7xl")}>
+                <Link href="/buy" className="flex min-w-0 items-center gap-2 text-foreground no-underline sm:gap-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-white">
                         <ShieldCheck className="size-5" />
                     </span>
@@ -21,7 +23,13 @@ export default function PublicHeader({ panelName = "DLGTW VPN", actions, compact
                     </span>
                 </Link>
 
-                {actions || (
+                <div className="flex shrink-0 items-center gap-1">
+                    <Link href="/status" className="flex size-9 items-center justify-center rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:w-auto sm:gap-2 sm:px-3" aria-label="Состояние сервиса" title="Состояние сервиса"><Activity className="size-4" /><span className="hidden sm:inline">Статус</span></Link>
+                    <Link href="/news" className="flex size-9 items-center justify-center rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:w-auto sm:gap-2 sm:px-3" aria-label="Новости" title="Новости">
+                        <Newspaper className="size-4" />
+                        <span className="hidden sm:inline">Новости</span>
+                    </Link>
+                    {actions || (
                     <nav className="flex shrink-0 items-center gap-1 text-sm">
                         <Link href="/buy" className="flex size-9 items-center justify-center rounded-md font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:h-9 sm:w-auto sm:gap-2 sm:px-3" aria-label="Купить VPN" title="Купить VPN">
                             <ShoppingCart className="size-4" />
@@ -32,7 +40,8 @@ export default function PublicHeader({ panelName = "DLGTW VPN", actions, compact
                             <span className="hidden sm:inline">Личный кабинет</span>
                         </Link>
                     </nav>
-                )}
+                    )}
+                </div>
             </div>
         </header>
     );

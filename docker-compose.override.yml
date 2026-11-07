@@ -1,0 +1,32 @@
+services:
+  caddy:
+    ports: !override
+      - "80:80"
+      - "127.0.0.1:14443:443"
+
+  edge:
+    image: haproxy:3.0-alpine
+    container_name: dlvpn-edge
+    user: "0:0"
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    volumes:
+      - /root/dlvpn-edge/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - /root/dlvpn-edge/maps:/etc/haproxy/maps:ro
+      - /root/dlvpn-edge/control:/run/dlvpn-edge:rw
+    command:
+      - haproxy
+      - -db
+      - -f
+      - /usr/local/etc/haproxy/haproxy.cfg

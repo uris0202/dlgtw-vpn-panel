@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+    ArrowRightLeft,
     Pencil,
     Plus,
     RefreshCw,
     Server as ServerIcon,
+    Stethoscope,
     Trash2,
     Users,
     Wifi,
@@ -16,6 +18,8 @@ import {
 import AdminLayout from "../../components/AdminLayout";
 import PageHeading from "../../components/PageHeading";
 import ServerModal from "../../components/ServerModal";
+import RelayTransportModal from "../../components/RelayTransportModal";
+import ServerDiagnosticsModal, { DiagnosticBadge } from "../../components/ServerDiagnosticsModal";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -38,10 +42,21 @@ export default function Servers() {
     const [selectedServer, setSelectedServer] = useState(null);
     const [modalError, setModalError] = useState("");
     const [saving, setSaving] = useState(false);
+    const [syncingServerId, setSyncingServerId] = useState(null);
+    const [transportServer, setTransportServer] = useState(null);
+    const [transportSaving, setTransportSaving] = useState(false);
+    const [transportError, setTransportError] = useState("");
+    const [pageMessage, setPageMessage] = useState("");
+    const [diagnosticServer, setDiagnosticServer] = useState(null);
+    const [diagnostics, setDiagnostics] = useState({});
+    const receiveReport = useCallback((id, report) => setDiagnostics((current) => ({ ...current, [id]: report })), []);
+    const loadTransportDetails = useCallback((serverId) => api.get(`/servers/${serverId}/relay-transport`, getAuthConfig()), []);
 
-    async function loadServers() {
+    async function loadServers({ refresh = false } = {}) {
 
         setPageError("");
+
+        setDiagnostics({});
 
         const me = await getMe();
 
@@ -58,7 +73,7 @@ export default function Servers() {
 
             const [serversResponse, dashboardResponse] = await Promise.all([
                 api.get("/servers", authConfig),
-                api.get("/dashboard", authConfig),
+                api.get(refresh ? "/dashboard?refresh=true" : "/dashboard", authConfig),
             ]);
 
             setServers(
@@ -99,7 +114,7 @@ export default function Servers() {
         setRefreshing(true);
 
         try {
-            await loadServers();
+            await loadServers({ refresh: true });
         } finally {
             setRefreshing(false);
         }
@@ -144,12 +159,26 @@ export default function Servers() {
 
         try {
 
+            let relayError = "";
+            let relayUpdated = false;
+
             if (modalMode === "edit" && selectedServer) {
                 await api.patch(
                     `/servers/${selectedServer.id}`,
                     payload,
                     getAuthConfig(),
                 );
+                const connectionChanged = ["host", "base_path", "username", "password"].some(
+                    (key) => Object.hasOwn(payload, key) && payload[key] !== selectedServer[key],
+                );
+                if (connectionChanged && payload.enabled !== false && selectedServer.relay?.configured) {
+                    try {
+                        await api.post(`/servers/${selectedServer.id}/relay-sync`, {}, getAuthConfig());
+                        relayUpdated = true;
+                    } catch (error) {
+                        relayError = getErrorMessage(error, "Не удалось обновить маршрут.");
+                    }
+                }
             } else {
                 await api.post(
                     "/servers",
@@ -161,7 +190,13 @@ export default function Servers() {
             setModalOpen(false);
             setSelectedServer(null);
             setModalMode("create");
-            await loadServers();
+            await loadServers({ refresh: true });
+            if (relayError) {
+                setPageError(`Данные сервера сохранены, но маршрут не обновлён: ${relayError}`);
+                setPageMessage("");
+            } else {
+                setPageMessage(relayUpdated ? "Сервер и маршрут переадресации обновлены." : "Сервер сохранён.");
+            }
 
         } catch (error) {
 
@@ -177,6 +212,38 @@ export default function Servers() {
 
         }
 
+    }
+
+    async function syncRelay(server) {
+        setSyncingServerId(server.id);
+        setPageError("");
+        setPageMessage("");
+        try {
+            await api.post(`/servers/${server.id}/relay-sync`, {}, getAuthConfig());
+            await loadServers({ refresh: true });
+            setPageMessage(`Маршрут сервера "${server.name}" обновлён.`);
+        } catch (error) {
+            setPageError(getErrorMessage(error, "Не удалось обновить маршрут."));
+        } finally {
+            setSyncingServerId(null);
+        }
+    }
+
+    async function saveTransport(payload) {
+        if (!transportServer) return;
+        setTransportSaving(true);
+        setTransportError("");
+        try {
+            await api.post(`/servers/${transportServer.id}/relay-transport`, payload, getAuthConfig());
+            const name = transportServer.name;
+            setTransportServer(null);
+            await loadServers({ refresh: true });
+            setPageMessage(`Транспорт сервера "${name}" обновлён.`);
+        } catch (error) {
+            setTransportError(getErrorMessage(error, "Не удалось применить транспорт."));
+        } finally {
+            setTransportSaving(false);
+        }
     }
 
     async function deleteServer(server) {
@@ -244,6 +311,7 @@ export default function Servers() {
             {pageError && (
                 <Alert variant="error" className="mb-5">{pageError}</Alert>
             )}
+            {pageMessage && <Alert variant="success" className="mb-5">{pageMessage}</Alert>}
 
             {servers.length === 0 ? (
                 <Card className="flex min-h-56 flex-col items-center justify-center p-6 text-center">
@@ -261,6 +329,8 @@ export default function Servers() {
                 <div className="grid gap-4 xl:grid-cols-2">
                     {servers.map((server) => {
                         const offline = server.status === "offline";
+                        const online = server.status === "online";
+                        const report = diagnostics[server.id];
 
                         return (
                             <Card key={server.id} className="min-w-0 overflow-hidden">
@@ -277,11 +347,11 @@ export default function Servers() {
 
                                     <div className="flex shrink-0 flex-wrap gap-1.5 sm:justify-end">
                                         <Badge variant={server.enabled ? "success" : "destructive"}>
-                                            {server.enabled ? "Активен" : "Отключен"}
+                                            {server.enabled ? "Включён в панели" : "Отключен"}
                                         </Badge>
                                         <Badge variant={offline ? "destructive" : "outline"}>
                                             {offline ? <WifiOff /> : <Wifi />}
-                                            {offline ? "3X-UI недоступен" : "3X-UI доступен"}
+                                            {offline ? "Нет статистики 3X-UI" : online ? "Статистика 3X-UI получена" : "Нет данных 3X-UI"}
                                         </Badge>
                                     </div>
                                 </div>
@@ -301,6 +371,33 @@ export default function Servers() {
                                     <Alert variant="error" className="mx-5 mt-4">{server.error}</Alert>
                                 )}
 
+                                {server.relay?.configured && (
+                                    <div className="grid gap-2 border-b border-border px-5 py-4 text-xs">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <span className="font-medium">Маршрут VPN</span>
+                                            {(server.relay?.transports || []).map((item) => (
+                                                <Badge key={item.inbound_id} variant={item.mode === "tls" ? "success" : "outline"}>
+                                                    #{item.inbound_id}: {item.mode === "tls" ? "mTLS" : "TCP"}
+                                                </Badge>
+                                            ))}
+                                            <Badge variant={server.relay.synchronized ? "success" : "warning"}>
+                                                {server.relay.synchronized ? "Применён" : "Требует обновления"}
+                                            </Badge>
+                                        </div>
+                                        <div className="break-all font-mono text-muted-foreground">
+                                            {(server.relay.endpoints || []).join(", ")} → {(server.relay.destinations || []).join(", ")}
+                                        </div>
+                                        {server.relay.error && <span className="text-destructive">{server.relay.error}</span>}
+                                    </div>
+                                )}
+
+                                <div className="grid gap-2 border-b border-border px-5 py-4 text-xs">
+                                    <DiagnosticSummary label="API 3X-UI · диагностика" state={report?.checks?.xui_api?.state} />
+                                    <DiagnosticSummary label="VPN-порты · TCP" state={portState(report?.vpn_ports)} />
+                                    <DiagnosticSummary label="VPN-подключение" state={report?.checks?.vpn_session?.state || "not_checked"} />
+                                    {report && <span className="text-muted-foreground">Проверено: {new Date(report.checked_at).toLocaleString("ru-RU")}</span>}
+                                </div>
+
                                 <div className="grid grid-cols-2 border-b border-border sm:grid-cols-4 sm:divide-x sm:divide-border">
                                     <Stat label="Клиентов" value={server.clients ?? 0} />
                                     <Stat label="Онлайн" value={server.online ?? 0} />
@@ -317,6 +414,26 @@ export default function Servers() {
                                         <Pencil />
                                         Изменить
                                     </Button>
+                                    <Button variant="outline" onClick={() => setDiagnosticServer(server)} className="col-span-2 w-full sm:w-auto"><Stethoscope />Диагностика</Button>
+                                    {server.relay?.configured && (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => syncRelay(server)}
+                                            disabled={!server.enabled || !server.relay.controllable || syncingServerId !== null}
+                                            title={server.relay.controllable ? "Проверить 3X-UI и применить адрес VPN-порта" : "Требуется однократная настройка веб-управления каскадом"}
+                                            className="col-span-2 w-full sm:w-auto"
+                                        >
+                                            <ArrowRightLeft className={syncingServerId === server.id ? "animate-pulse" : ""} />
+                                            {syncingServerId === server.id ? "Проверка..." : "Обновить маршрут"}
+                                        </Button>
+                                    )}
+                                    {server.relay?.configured && (
+                                        <Button variant="outline" className="col-span-2 w-full sm:w-auto"
+                                            disabled={syncingServerId !== null}
+                                            onClick={() => { setTransportError(""); setTransportServer(server); }}>
+                                            Настроить TCP/TLS
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="ghost"
                                         onClick={() => deleteServer(server)}
@@ -332,6 +449,14 @@ export default function Servers() {
                 </div>
             )}
 
+            <RelayTransportModal
+                server={transportServer}
+                loadDetails={loadTransportDetails}
+                saving={transportSaving}
+                error={transportError}
+                onClose={() => { if (!transportSaving) setTransportServer(null); }}
+                onSave={saveTransport}
+            />
             <ServerModal
                 open={modalOpen}
                 mode={modalMode}
@@ -341,6 +466,7 @@ export default function Servers() {
                 onClose={closeModal}
                 onSave={saveServer}
             />
+            <ServerDiagnosticsModal server={diagnosticServer} onClose={() => setDiagnosticServer(null)} onReport={receiveReport} />
         </AdminLayout>
 
     );
@@ -371,7 +497,7 @@ function mergeServersWithStats(servers, stats) {
 
         return {
             ...server,
-            status: serverStats.status || "online",
+            status: serverStats.status || "unknown",
             error: serverStats.error,
             clients: serverStats.clients,
             online: serverStats.online,
@@ -381,6 +507,16 @@ function mergeServersWithStats(servers, stats) {
 
     });
 
+}
+
+function DiagnosticSummary({ label, state }) {
+    return <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-muted-foreground">{label}</span><DiagnosticBadge state={state} /></div>;
+}
+
+function portState(items) {
+    if (!items?.length) return "not_checked";
+    if (items.some((item) => item.state === "error")) return "error";
+    return items.every((item) => item.state === "ok") ? "ok" : "warning";
 }
 
 function getAuthConfig() {

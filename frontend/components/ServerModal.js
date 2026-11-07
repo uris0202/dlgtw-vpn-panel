@@ -120,7 +120,7 @@ export default function ServerModal({
                     <Field label="Страна">
                         <Input value={country} onChange={(event) => setCountry(event.target.value)} required disabled={saving} />
                     </Field>
-                    <Field label="3X-UI URL" className="sm:col-span-2">
+                    <Field label="Адрес панели 3X-UI" className="sm:col-span-2">
                         <Input type="url" value={host} onChange={(event) => setHost(event.target.value)} placeholder="https://1.2.3.4:10000" required disabled={saving} />
                     </Field>
                     <Field label="Base path" className="sm:col-span-2">

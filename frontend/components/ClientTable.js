@@ -8,6 +8,9 @@ import {
     QrCode,
     Trash2,
     UserRoundCog,
+    Wifi,
+    WifiOff,
+    CircleHelp,
 } from "lucide-react";
 
 import ClientLinksModal from "./ClientLinksModal";
@@ -15,6 +18,7 @@ import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
+import { clientPresence, formatLastOnline } from "../lib/clientPresence";
 
 export default function ClientTable({
     clients,
@@ -57,13 +61,14 @@ export default function ClientTable({
 
             <div className="hidden overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgba(16,24,40,0.04)] lg:block">
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[920px] border-collapse text-sm">
+                    <table className="w-full min-w-[1080px] border-collapse text-sm">
                         <thead className="bg-[#f8f9fb] text-left text-xs font-semibold text-muted-foreground">
                             <tr className="border-b border-border">
                                 <th className="px-4 py-3">Клиент</th>
                                 <th className="px-4 py-3">Группа</th>
                                 <th className="px-4 py-3">Трафик</th>
-                                <th className="px-4 py-3">Статус</th>
+                                <th className="px-4 py-3">Доступ</th>
+                                <th className="px-4 py-3">Подключение</th>
                                 <th className="px-4 py-3">Окончание</th>
                                 <th className="px-4 py-3 text-right">Действия</th>
                             </tr>
@@ -72,7 +77,7 @@ export default function ClientTable({
                         <tbody className="divide-y divide-border">
                             {clients.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                                         Клиенты не найдены.
                                     </td>
                                 </tr>
@@ -93,6 +98,7 @@ export default function ClientTable({
                                             {client.enabled ? "Активен" : "Отключен"}
                                         </Badge>
                                     </td>
+                                    <td className="min-w-48 px-4 py-3.5"><ClientConnection client={client} /></td>
                                     <td className="px-4 py-3.5 text-muted-foreground">{formatExpiry(client.expiry)}</td>
                                     <td className="px-4 py-3.5">
                                         <div className="flex items-center justify-end gap-1">
@@ -173,6 +179,8 @@ function MobileClientCard({
                 </Badge>
             </div>
 
+            <div className="border-t border-border px-4 py-3"><ClientConnection client={client} /></div>
+
             <div className="grid grid-cols-3 divide-x divide-border border-y border-border bg-[#f8f9fb]">
                 <MobileDetail label="Группа" value={client.group || "Без группы"} />
                 <MobileDetail label="Трафик" value={formatTraffic(client.traffic)} />
@@ -228,6 +236,17 @@ function MobileClientCard({
             </div>
         </article>
     );
+}
+
+function ClientConnection({ client }) {
+    const presence = clientPresence(client);
+    const lastOnline = formatLastOnline(client.last_online);
+    const Icon = presence === "online" ? Wifi : presence === "offline" ? WifiOff : CircleHelp;
+    const label = presence === "online" ? "Онлайн" : presence === "offline" ? "Не в сети" : "Нет данных";
+    return <div>
+        <Badge variant={presence === "online" ? "success" : presence === "offline" ? "secondary" : "outline"} title="По последним данным 3X-UI на выбранном сервере"><Icon className="size-3" />{label}</Badge>
+        {presence !== "online" && lastOnline && <div className="mt-1 text-xs text-muted-foreground">Активность: {lastOnline}</div>}
+    </div>;
 }
 
 function MobileDetail({ label, value }) {

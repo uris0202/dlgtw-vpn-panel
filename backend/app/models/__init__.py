@@ -4,3 +4,4 @@ from app.models.settings import PanelSettings
 from app.models.plan import Plan
 from app.models.order import Order
 from app.models.audit_log import AuditLog
+from app.models.news import News

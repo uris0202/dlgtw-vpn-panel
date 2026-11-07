@@ -10,6 +10,7 @@ class SettingsUpdate(BaseModel):
     subscription_port: int | None = Field(default=None, ge=1, le=65535)
     subscription_path: str | None = None
     support_contact: str | None = None
+    client_show_server_links: bool | None = None
     payment_phone: str | None = None
     payment_recipient: str | None = None
     payment_instructions: str | None = None
@@ -28,6 +29,7 @@ class SettingsResponse(BaseModel):
     subscription_port: int
     subscription_path: str
     support_contact: str
+    client_show_server_links: bool
     payment_phone: str
     payment_recipient: str
     payment_instructions: str

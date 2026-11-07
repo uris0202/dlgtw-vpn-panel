@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     Plus,
     RefreshCw,
     Search as SearchIcon,
+    Users,
 } from "lucide-react";
 
 import AdminLayout from "../../components/AdminLayout";
@@ -20,6 +21,7 @@ import { Input, Select } from "../../components/ui/input";
 
 import { getMe } from "../../lib/auth";
 import api from "../../lib/api";
+import { matchesConnection } from "../../lib/clientPresence";
 
 export default function Clients() {
 
@@ -56,6 +58,8 @@ function ClientsContent() {
     const [search, setSearch] = useState(initialSearch);
     const [statusFilter, setStatusFilter] = useState("all");
     const [groupFilter, setGroupFilter] = useState("all");
+    const [connectionFilter, setConnectionFilter] = useState("all");
+    const [autoRefresh, setAutoRefresh] = useState(true);
     const [pageError, setPageError] = useState("");
     const [pageMessage, setPageMessage] = useState("");
     const [accountLinkLoadingEmail, setAccountLinkLoadingEmail] = useState("");
@@ -64,103 +68,98 @@ function ClientsContent() {
     const [modalOpen, setModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState("create");
     const [selectedClient, setSelectedClient] = useState(null);
+    const requestSequence = useRef(0);
+    const requestController = useRef(null);
+    const inFlight = useRef(false);
+    const activeServerId = useRef(serverId);
+    activeServerId.current = serverId;
 
-    async function loadClients() {
-
-        setLoading(true);
-        setPageError("");
-
-        const me = await getMe();
-
-        if (!me) {
-            router.replace("/login");
-            return;
-        }
-
-        setUser(me);
-
-        if (!serverId) {
-
-            try {
-
-                const response = await api.get(
-                    "/servers",
-                    getAuthConfig(),
-                );
-                const loadedServers = Array.isArray(response.data)
-                    ? response.data
-                    : [];
-                const firstServer = loadedServers[0];
-
-                setServers(loadedServers);
-
-                if (firstServer) {
-                    router.replace(`/clients?server=${firstServer.id}`);
-                    return;
-                }
-
-                setPageError("Сначала добавьте VPN-сервер.");
-
-            } catch (error) {
-
-                setPageError(getErrorMessage(error, "Не удалось загрузить серверы."));
-
-            }
-
-            setLoading(false);
-            return;
-        }
-
+    const loadClients = useCallback(async ({ initial = false, background = false } = {}) => {
+        if (serverId !== activeServerId.current) return;
+        requestController.current?.abort();
+        const controller = new AbortController();
+        requestController.current = controller;
+        const request = ++requestSequence.current;
+        const current = () => request === requestSequence.current && serverId === activeServerId.current && !controller.signal.aborted;
+        inFlight.current = true;
+        if (initial) setLoading(true);
         try {
-
-            const authConfig = getAuthConfig();
-
-            const [
-                clientsResponse,
-                serversResponse,
-                settingsResponse,
-                plansResponse,
-            ] = await Promise.all([
-                api.get(
-                    `/clients/${serverId}`,
-                    authConfig,
-                ),
-                api.get(
-                    "/servers",
-                    authConfig,
-                ),
-                api.get(
-                    "/settings",
-                    authConfig,
-                ),
-                api.get(
-                    "/plans",
-                    authConfig,
-                ),
-            ]);
-
-            setData(clientsResponse.data);
-            setServers(serversResponse.data);
-            setSettings(settingsResponse.data);
-            setPlans(Array.isArray(plansResponse.data) ? plansResponse.data : []);
-
+            const me = await getMe();
+            if (!current()) return;
+            if (!me) {
+                router.replace("/login");
+                return;
+            }
+            setUser(me);
+            const authConfig = { ...getAuthConfig(), signal: controller.signal };
+            if (!serverId) {
+                router.replace("/clients/overview");
+                return;
+            }
+            if (background) {
+                const response = await api.get(`/clients/${serverId}`, authConfig);
+                if (!current()) return;
+                setData(response.data);
+            } else {
+                const [clientsResponse, serversResponse, settingsResponse, plansResponse] = await Promise.all([
+                    api.get(`/clients/${serverId}`, authConfig), api.get("/servers", authConfig),
+                    api.get("/settings", authConfig), api.get("/plans", authConfig),
+                ]);
+                if (!current()) return;
+                setData(clientsResponse.data);
+                setServers(serversResponse.data);
+                setSettings(settingsResponse.data);
+                setPlans(Array.isArray(plansResponse.data) ? plansResponse.data : []);
+            }
+            setPageError("");
         } catch (error) {
-
+            if (!current()) return;
             setPageError(getErrorMessage(error, "Не удалось загрузить клиентов."));
-
+            setData((previous) => previous ? {
+                ...previous, online_available: false, online_checked_at: null,
+                clients: (previous.clients || []).map((client) => ({ ...client, online: null })),
+            } : previous);
         } finally {
-
-            setLoading(false);
-
+            if (current()) {
+                inFlight.current = false;
+                if (initial) setLoading(false);
+            }
         }
-
-    }
+    }, [serverId, router]);
 
     useEffect(() => {
+        setData(null);
+        setModalOpen(false);
+        setSelectedClient(null);
+        setPageMessage("");
+        setPageError("");
+        loadClients({ initial: true });
+        return () => {
+            requestSequence.current += 1;
+            requestController.current?.abort();
+            inFlight.current = false;
+        };
+    }, [loadClients]);
 
-        loadClients();
+    useEffect(() => {
+        if (!serverId || !autoRefresh || modalOpen || saving) return undefined;
+        function refreshVisiblePage() {
+            if (document.visibilityState === "visible" && !inFlight.current) loadClients({ background: true });
+        }
+        const timer = window.setInterval(refreshVisiblePage, 30000);
+        document.addEventListener("visibilitychange", refreshVisiblePage);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener("visibilitychange", refreshVisiblePage);
+        };
+    }, [serverId, autoRefresh, modalOpen, saving, loadClients]);
 
-    }, [serverId]);
+    function pauseListRequest() {
+        requestSequence.current += 1;
+        requestController.current?.abort();
+        inFlight.current = false;
+        setRefreshing(false);
+    }
 
     function logout() {
 
@@ -183,7 +182,7 @@ function ClientsContent() {
     }
 
     function openCreateModal() {
-
+        pauseListRequest();
         setModalMode("create");
         setSelectedClient(null);
         setModalError("");
@@ -192,7 +191,7 @@ function ClientsContent() {
     }
 
     function openEditModal(client) {
-
+        pauseListRequest();
         setModalMode("edit");
         setSelectedClient(client);
         setModalError("");
@@ -380,7 +379,7 @@ function ClientsContent() {
                 || (groupFilter === "none" && normalizedGroup === "")
                 || groupFilter === normalizedGroup;
 
-            return matchesSearch && matchesStatus && matchesGroup;
+            return matchesSearch && matchesStatus && matchesGroup && matchesConnection(client, connectionFilter);
 
         });
 
@@ -391,6 +390,7 @@ function ClientsContent() {
                 description="Управление доступами и подключениями на выбранном сервере"
                 actions={
                     <>
+                        <Button type="button" variant="outline" onClick={() => router.push("/clients/overview")}><Users />Все клиенты</Button>
                         <Select
                             value={serverId || ""}
                             onChange={(event) => router.push(`/clients?server=${event.target.value}`)}
@@ -421,9 +421,13 @@ function ClientsContent() {
                 }
             />
 
-            <div className="mb-5 flex flex-wrap gap-2">
+            <div className="mb-5 flex flex-wrap items-center gap-2">
                 <Badge variant="outline">Всего: {data?.total || 0}</Badge>
-                <Badge variant="success">Онлайн: {data?.online || 0}</Badge>
+                <Badge variant={data?.online_available ? "success" : "outline"}>Онлайн: {data?.online_available ? data.online : "нет данных"}</Badge>
+                <label className="ml-auto flex min-h-8 items-center gap-2 text-xs text-muted-foreground" title="Обновлять каждые 30 секунд, пока вкладка видна">
+                    <input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} className="size-4 accent-[#155eef]" />Автообновление
+                </label>
+                {data?.online_checked_at && <span className="w-full text-xs text-muted-foreground sm:w-auto">Данные 3X-UI: {new Date(data.online_checked_at).toLocaleTimeString("ru-RU")}</span>}
             </div>
 
             {pageError && (
@@ -434,8 +438,10 @@ function ClientsContent() {
                 <Alert variant="success" className="mb-4">{pageMessage}</Alert>
             )}
 
+            {data?.truncated && <Alert className="mb-4">Загружено {clients.length} из {data.total} клиентов. Счётчик онлайн относится ко всему серверу; часть записей может отсутствовать в таблице.</Alert>}
+
             <Card className="mb-4 p-3 sm:p-4">
-                <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_220px]">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_160px_160px_180px]">
                     <label className="relative block">
                         <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -468,6 +474,13 @@ function ClientsContent() {
                         {groupOptions.map((group) => (
                             <option key={group} value={group}>{group}</option>
                         ))}
+                    </Select>
+
+                    <Select value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} aria-label="Подключение клиента">
+                        <option value="all">Все подключения</option>
+                        <option value="online">Онлайн</option>
+                        <option value="offline">Не в сети</option>
+                        <option value="unknown">Нет данных</option>
                     </Select>
                 </div>
 

@@ -125,6 +125,10 @@ export default function ClientModal({
 
         setSelectedServerIds((current) => {
 
+            if (selectedPlanServerLimit === 1) {
+                return [normalizedServerId];
+            }
+
             if (current.includes(normalizedServerId)) {
                 if (current.length === 1) {
                     return current;
@@ -134,10 +138,6 @@ export default function ClientModal({
             }
 
             if (selectedPlanServerLimit && current.length >= selectedPlanServerLimit) {
-                if (selectedPlanServerLimit === 1) {
-                    return [normalizedServerId];
-                }
-
                 return current;
             }
 
@@ -219,7 +219,8 @@ export default function ClientModal({
                                     {serverOptions.map((server) => (
                                         <CheckRow key={server.id} disabled={saving || isServerDisabled(Number(server.id), selectedServerIds, selectedPlanServerLimit)}>
                                             <input
-                                                type="checkbox"
+                                                type={selectedPlanServerLimit === 1 ? "radio" : "checkbox"}
+                                                name={selectedPlanServerLimit === 1 ? "client-server" : undefined}
                                                 checked={selectedServerIds.includes(Number(server.id))}
                                                 onChange={() => toggleServer(server.id)}
                                                 disabled={saving || isServerDisabled(Number(server.id), selectedServerIds, selectedPlanServerLimit)}
@@ -272,6 +273,7 @@ export default function ClientModal({
                     </Field>
                     <Field label={isEdit ? "Продлить на дней" : "Срок действия, дней"}>
                         <Input type="number" min="0" value={days} onChange={(event) => setDays(event.target.value)} disabled={saving} placeholder={isEdit ? "Не менять" : String(defaultSettings.default_client_days ?? 30)} />
+                        {isEdit && <span className="text-xs font-normal text-muted-foreground">Если доступ ещё активен, дни добавятся к текущей дате окончания.</span>}
                     </Field>
                     <Field label="Лимит трафика, GB">
                         <Input type="number" min="0" value={totalGB} onChange={(event) => setTotalGB(event.target.value)} disabled={saving} placeholder={isEdit ? "Не менять" : String(defaultSettings.default_traffic_gb ?? 0)} />

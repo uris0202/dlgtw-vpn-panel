@@ -7,7 +7,9 @@ import {
     CircleDollarSign,
     LayoutDashboard,
     Link2,
+    LockKeyhole,
     Menu,
+    Newspaper,
     Search,
     Server,
     Settings,
@@ -48,7 +50,9 @@ const navigation = [
     {
         label: "Система",
         items: [
+            { href: "/announcements", label: "Новости", icon: Newspaper },
             { href: "/activity", label: "Журнал действий", icon: ScrollText },
+            { href: "/profile", label: "Профиль и безопасность", icon: LockKeyhole },
             { href: "/settings", label: "Настройки", icon: Settings },
         ],
     },
@@ -128,7 +132,7 @@ export default function Sidebar() {
                     </div>
                 </div>
 
-                <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+                <nav className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4">
                     {navigation.map((section) => (
                         <div key={section.label} className="mb-5 last:mb-0">
                             <div className="mb-1.5 px-2 text-[11px] font-semibold uppercase text-[#7f828b]">
@@ -161,7 +165,7 @@ function NavLink({ href, label, icon: Icon, active }) {
         <Link
             href={href}
             className={cn(
-                "flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-[#c9cbd1] transition-colors hover:bg-[#25272c] hover:text-white",
+                "flex min-h-10 w-full min-w-0 items-center gap-3 rounded-md px-3 text-sm font-medium text-[#c9cbd1] transition-colors hover:bg-[#25272c] hover:text-white",
                 active && "bg-[#26395f] text-white",
             )}
         >

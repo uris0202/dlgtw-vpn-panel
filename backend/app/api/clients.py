@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -35,12 +35,14 @@ def search_client(
 @router.get("/{server_id}")
 def get_clients(
     server_id: int,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
 
     service = ClientService(db)
 
+    response.headers["Cache-Control"] = "private, no-store"
     return service.get_all(server_id)
 
 
@@ -106,16 +108,19 @@ def update_client(
         )
 
     updated_email = (client.email or email).strip()
+    audit_details = {
+        "server_id": server_id,
+        "changed_fields": sorted(client.model_dump(exclude_unset=True).keys()),
+    }
+    if client.days is not None:
+        audit_details["added_days"] = client.days
     AuditLogService(db).record_admin(
         current_user,
         action="client.updated",
         entity_type="client",
         entity_id=f"{server_id}:{updated_email}",
         summary=f"Изменён клиент {email} на сервере #{server_id}",
-        details={
-            "server_id": server_id,
-            "changed_fields": sorted(client.model_dump(exclude_unset=True).keys()),
-        },
+        details=audit_details,
         ip_address=get_client_ip(request),
     )
 

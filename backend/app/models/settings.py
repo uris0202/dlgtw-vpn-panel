@@ -60,6 +60,12 @@ class PanelSettings(Base, TimestampMixin):
         nullable=False,
     )
 
+    client_show_server_links: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
     payment_phone: Mapped[str] = mapped_column(
         String(50),
         default="",

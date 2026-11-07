@@ -8,6 +8,7 @@ import {
     CircleDollarSign,
     FileClock,
     KeyRound,
+    Newspaper,
     RefreshCw,
     Search,
     Server,
@@ -181,6 +182,7 @@ export default function ActivityPage() {
                         <option value="server">Серверы</option>
                         <option value="plan">Тарифы</option>
                         <option value="settings">Настройки</option>
+                        <option value="news">Новости</option>
                         <option value="admin">Администраторы</option>
                     </Select>
 
@@ -289,6 +291,7 @@ function getActionMeta(action, entityType) {
     if (entityType === "server") return { label: "Сервер", variant: "outline", icon: Server, iconClass: "bg-[#f0f9ff] text-[#026aa2]" };
     if (entityType === "plan") return { label: "Тариф", variant: "outline", icon: CircleDollarSign, iconClass: "bg-[#fdf4ff] text-[#9f1ab1]" };
     if (entityType === "settings") return { label: "Настройки", variant: "outline", icon: Settings, iconClass: "bg-muted text-muted-foreground" };
+    if (entityType === "news") return { label: "Новости", variant: "outline", icon: Newspaper, iconClass: "bg-muted text-muted-foreground" };
     if (action.includes("login")) return { label: "Вход", variant: "outline", icon: KeyRound, iconClass: "bg-muted text-muted-foreground" };
     return { label: entityType === "account" ? "Личный кабинет" : "Администратор", variant: "outline", icon: UserRound, iconClass: "bg-muted text-muted-foreground" };
 }

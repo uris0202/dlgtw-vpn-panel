@@ -6,6 +6,7 @@ import {
     Copy,
     ExternalLink,
     KeyRound,
+    Link2,
     Power,
     PowerOff,
     ReceiptText,
@@ -86,6 +87,12 @@ export default function AccountsPage() {
         const accountUrl = `${window.location.origin}/account/${account.account_token}`;
         try { await navigator.clipboard.writeText(accountUrl); } catch { fallbackCopy(accountUrl); }
         showMessage(`Ссылка кабинета клиента "${account.client_email}" скопирована.`);
+    }
+
+    async function copySubscriptionLink(account) {
+        if (!account.subscription_url) return;
+        try { await navigator.clipboard.writeText(account.subscription_url); } catch { fallbackCopy(account.subscription_url); }
+        showMessage(`Единая подписка клиента "${account.client_email}" скопирована.`);
     }
 
     async function resetCredentials(account) {
@@ -186,6 +193,7 @@ export default function AccountsPage() {
                                 account={account}
                                 actionKey={actionKey}
                                 onCopy={() => copyAccountLink(account)}
+                                onCopySubscription={() => copySubscriptionLink(account)}
                                 onOpen={() => window.open(`/account/${account.account_token}`, "_blank", "noopener,noreferrer")}
                                 onOrders={() => router.push(`/orders?q=${encodeURIComponent(account.client_email)}`)}
                                 onReset={() => resetCredentials(account)}
@@ -200,7 +208,7 @@ export default function AccountsPage() {
     );
 }
 
-function AccountRow({ account, actionKey, onCopy, onOpen, onOrders, onReset, onDisable, onEnable }) {
+function AccountRow({ account, actionKey, onCopy, onCopySubscription, onOpen, onOrders, onReset, onDisable, onEnable }) {
     const accountBusy = actionKey.endsWith(account.account_token);
     const credentialsConfigured = account.has_password && account.account_login;
 
@@ -236,6 +244,7 @@ function AccountRow({ account, actionKey, onCopy, onOpen, onOrders, onReset, onD
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-start xl:max-w-96 xl:justify-end">
                 <Button size="sm" onClick={onOpen} className="w-full sm:w-auto"><ExternalLink />Открыть ЛК</Button>
                 <Button variant="outline" size="sm" onClick={onCopy} className="w-full sm:w-auto"><Copy />Ссылка</Button>
+                <Button variant="outline" size="sm" onClick={onCopySubscription} disabled={!account.subscription_url} className="w-full sm:w-auto"><Link2 />Подписка</Button>
                 <Button variant="outline" size="sm" onClick={onOrders} className="w-full sm:w-auto"><ReceiptText />Заказы</Button>
                 <Button variant="outline" size="sm" onClick={onReset} disabled={accountBusy || !credentialsConfigured} title={!credentialsConfigured ? "Сначала клиент должен настроить вход" : "Сбросить логин и пароль"} className="w-full sm:w-auto"><KeyRound />Сбросить вход</Button>
                 {account.vpn_enabled === false ? (

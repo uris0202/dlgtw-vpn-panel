@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -7,6 +8,85 @@ from app.services.server_service import ServerService
 from app.services.settings_service import SettingsService
 from app.services.xui_service import XUIService
 from app.services.vless_service import attach_client_links
+
+
+MILLISECONDS_PER_DAY = 86400 * 1000
+
+
+def calculate_extended_expiry(
+    current_expiry: int | str | None,
+    days: int,
+    now_ms: int | None = None,
+):
+    if days <= 0:
+        return 0
+
+    try:
+        normalized_expiry = int(current_expiry or 0)
+    except (TypeError, ValueError):
+        normalized_expiry = 0
+
+    effective_now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+
+    return max(normalized_expiry, effective_now_ms) + days * MILLISECONDS_PER_DAY
+
+
+def _client_expiry(client):
+    try:
+        return int(client.get("expiryTime") or client.get("expiry") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _client_enabled(client):
+    return bool(client.get("enable", client.get("enabled", False)))
+
+
+def _renewal_validation_error(client, expected_expiry):
+    errors = []
+    actual_expiry = _client_expiry(client)
+
+    if expected_expiry is not None:
+        if expected_expiry == 0 and actual_expiry != 0:
+            errors.append("бессрочный доступ не применён")
+        elif expected_expiry > 0 and actual_expiry < expected_expiry:
+            errors.append("новая дата окончания не применена")
+
+    if not _client_enabled(client):
+        errors.append("клиент остался выключен")
+
+    if not errors:
+        return ""
+
+    return "3X-UI не применил продление: " + ", ".join(errors) + "."
+
+
+def _find_existing_client(xui, email):
+    lookup_error = None
+
+    try:
+        data = xui.get(email)
+        client = data.get("client")
+
+        if client:
+            return client
+    except Exception as error:
+        lookup_error = error
+
+    try:
+        data = xui.get_all()
+    except Exception:
+        if lookup_error:
+            raise lookup_error
+        raise
+
+    expected_email = (email or "").strip().lower()
+
+    for client in data.get("items", []):
+        if (client.get("email") or "").strip().lower() == expected_email:
+            return client
+
+    return None
 
 
 class ClientService:
@@ -35,35 +115,59 @@ class ClientService:
 
         xui = XUIService.connect(server)
 
-        data = xui.get_all()
-
-        clients = []
-
-        for item in data.get("items", []):
-
-            clients.append(self._format_client(item))
-
-        summary = data.get("summary", {})
-
         try:
-            settings = SettingsService(self.db).get()
+            data = xui.get_all()
+            items = list(data.get("items") or [])
+            summary = data.get("summary")
+            summary = summary if isinstance(summary, dict) else {}
+            names = summary.get("online")
+            online_available = isinstance(names, list) and all(isinstance(name, str) for name in names)
+            online_names = set(names) if online_available else set()
+            checked_at = int(time.time() * 1000)
+            total = max(int(data.get("total") or len(items)), len(items))
+            loaded = len(items)
+            # The 3X-UI summary spans all pages. Do not hide online clients after page 1.
+            for page in range(2, 101):
+                if loaded >= total:
+                    break
+                batch = xui.get_all(page=page, page_size=200).get("items") or []
+                if not batch:
+                    break
+                items.extend(batch)
+                loaded += len(batch)
 
-            clients = attach_client_links(
-                server=server,
-                clients=clients,
-                inbounds=xui.get_inbounds(),
-                subscription_port=settings.subscription_port,
-                subscription_path=settings.subscription_path,
-            )
-        except Exception:
-            pass
+            clients = []
+            seen = set()
+            for item in items:
+                email = item.get("email")
+                if email in seen:
+                    continue
+                seen.add(email)
+                client = self._format_client(item)
+                client["online"] = email in online_names if online_available else None
+                clients.append(client)
 
-        return {
-            "total": data.get("total", 0),
-            "online": len(summary.get("online", [])),
-            "active": summary.get("active", 0),
-            "clients": clients,
-        }
+            try:
+                settings = SettingsService(self.db).get()
+                clients = attach_client_links(
+                    server=server, clients=clients, inbounds=xui.get_inbounds(),
+                    subscription_port=settings.subscription_port,
+                    subscription_path=settings.subscription_path,
+                )
+            except Exception:
+                pass
+
+            return {
+                "total": total,
+                "online": len(online_names),
+                "online_available": online_available,
+                "online_checked_at": checked_at if online_available else None,
+                "truncated": len(clients) < total,
+                "active": summary.get("active", 0),
+                "clients": clients,
+            }
+        finally:
+            self._close_xui(xui)
 
     def get(
         self,
@@ -101,10 +205,9 @@ class ClientService:
 
         xui = self._connect(server_id)
 
-        try:
-            data = xui.get(email)
-            client = data["client"]
-        except Exception:
+        client = _find_existing_client(xui, email)
+
+        if client is None:
             resolved_inbound_id = self._resolve_inbound_id(
                 xui,
                 inbound_id,
@@ -119,32 +222,70 @@ class ClientService:
                 comment=comment,
             )
 
-        values = {
-            "enable": True,
-        }
+        now_ms = int(time.time() * 1000)
+        current_expiry = _client_expiry(client)
+        needs_reactivation = (
+            not _client_enabled(client)
+            or (current_expiry > 0 and current_expiry <= now_ms)
+        )
+        values = {}
+
+        if not needs_reactivation:
+            values["enable"] = True
 
         if days is not None:
-
-            if days > 0:
-                import time
-
-                now_ms = int(time.time() * 1000)
-                current_expiry = int(client.get("expiryTime") or 0)
-                base_expiry = max(current_expiry, now_ms)
-
-                values["expiryTime"] = int(
-                    base_expiry + days * 86400 * 1000
-                )
-            else:
-                values["expiryTime"] = 0
+            values["expiryTime"] = calculate_extended_expiry(
+                current_expiry,
+                days,
+                now_ms=now_ms,
+            )
 
         if total_gb is not None:
             values["totalGB"] = total_gb * 1024 ** 3
 
-        return xui.update(
+        xui.update(
             email,
+            existing_client=client,
             **values,
         )
+
+        reactivation_error = None
+
+        if needs_reactivation:
+            try:
+                xui.set_enabled(email, True)
+            except Exception as error:
+                reactivation_error = error
+                fallback_client = _find_existing_client(xui, email)
+
+                if fallback_client is None:
+                    raise Exception("3X-UI не вернул клиента для повторного включения.")
+
+                xui.update(
+                    email,
+                    existing_client=fallback_client,
+                    enable=True,
+                )
+
+        updated_client = _find_existing_client(xui, email)
+
+        if updated_client is None:
+            raise Exception("3X-UI не вернул клиента после продления.")
+
+        validation_error = _renewal_validation_error(
+            updated_client,
+            values.get("expiryTime"),
+        )
+
+        if validation_error:
+            if reactivation_error:
+                validation_error = (
+                    f"{validation_error} Повторное включение: {reactivation_error}"
+                )
+
+            raise Exception(validation_error)
+
+        return True
 
     def _resolve_inbound_id(
         self,
@@ -204,15 +345,17 @@ class ClientService:
             values["totalGB"] = client.total_gb * 1024 ** 3
 
         if client.days is not None:
-
-            import time
-
-            values["expiryTime"] = int(
-                (time.time() + client.days * 86400) * 1000
+            existing_client = xui.get(email)["client"]
+            values["expiryTime"] = calculate_extended_expiry(
+                existing_client.get("expiryTime"),
+                client.days,
             )
+        else:
+            existing_client = None
 
         return xui.update(
             email,
+            existing_client=existing_client,
             **values,
         )
 
@@ -326,7 +469,7 @@ class ClientService:
 
     def _format_client(self, item):
 
-        traffic = item.get("traffic", {})
+        traffic = item.get("traffic") or {}
 
         up = traffic.get("up", item.get("up", 0))
         down = traffic.get("down", item.get("down", 0))

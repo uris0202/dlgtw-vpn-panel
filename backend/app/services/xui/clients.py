@@ -113,12 +113,15 @@ class XUIClients(XUIInbounds):
     def update(
         self,
         current_email: str,
+        existing_client: dict | None = None,
         **kwargs,
     ):
 
-        data = self.get(current_email)
+        client = existing_client
 
-        client = data["client"]
+        if client is None:
+            data = self.get(current_email)
+            client = data["client"]
 
         client_id = client.get("uuid") or client.get("id")
 
@@ -165,6 +168,37 @@ class XUIClients(XUIInbounds):
         if not data.get("success"):
             raise Exception(
                 data.get("msg", "Unable to update client")
+            )
+
+        return True
+
+    def set_enabled(
+        self,
+        email: str,
+        enabled: bool = True,
+    ):
+
+        action = "bulkEnable" if enabled else "bulkDisable"
+        response = self.client.post(
+            f"/panel/api/clients/{action}",
+            json={"emails": [email]},
+        )
+
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+
+        if response.is_error:
+            raise Exception(
+                data.get("msg")
+                or response.text
+                or f"3X-UI returned HTTP {response.status_code}"
+            )
+
+        if not data.get("success"):
+            raise Exception(
+                data.get("msg", "Unable to change client status")
             )
 
         return True

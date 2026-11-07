@@ -14,11 +14,22 @@ class AuditLogService:
         "password",
         "password_hash",
         "current_password",
+        "new_password",
         "telegram_bot_token",
         "token",
         "access_token",
         "account_token",
         "uuid",
+        "code",
+        "challenge_id",
+        "challenge_token",
+        "two_factor_challenge_hash",
+        "totp_secret",
+        "totp_secret_encrypted",
+        "totp_pending_secret_encrypted",
+        "provisioning_uri",
+        "recovery_codes",
+        "recovery_code_hashes",
     }
 
     def __init__(self, db: Session):
