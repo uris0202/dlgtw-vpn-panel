@@ -111,7 +111,8 @@ class RelayDomainTests(unittest.TestCase):
             }},
         )
         parsed = urlsplit(url)
-        self.assertEqual((parsed.hostname, parsed.port, parsed.username), ("vpn.dlgtw.ru", 24443, "uuid"))
+        self.assertEqual((parsed.hostname, parsed.port, parsed.username), ("vpn.dlgtw.ru", 443, "uuid"))
+        self.assertEqual(load_relay_routes()["routes"][0]["listen_port"], 24443)
         query = parse_qs(parsed.query)
         self.assertEqual(query["sni"], ["www.amd.com"])
         self.assertEqual(query["pbk"], ["public-key"])
@@ -195,20 +196,33 @@ class RelayDomainTests(unittest.TestCase):
         self.haproxy.write_text(render_haproxy(self.configuration))
         change.set_public_host("vpn.dlgtw.ru", ["139.100.235.247"])
         profiles = []
+        expected_snis = []
+        expected_uuids = []
         for route in self.configuration["routes"]:
+            sni = f"node-{route['server_id']}.example.test"
+            client_id = f"uuid-{route['server_id']}"
+            expected_snis.append(sni)
+            expected_uuids.append(client_id)
             url = build_vless_url(
                 SimpleNamespace(id=route["server_id"], name=f"Server {route['server_id']}", host=f"https://{route['upstream_host']}:10000"),
                 {"id": route["inbound_id"], "port": route["upstream_port"]},
-                {"id": f"uuid-{route['server_id']}", "email": "Alice"},
-                {"network": "tcp", "security": "reality"},
+                {"id": client_id, "email": "Alice"},
+                {"network": "tcp", "security": "reality", "realitySettings": {
+                    "serverNames": [sni], "publicKey": f"public-key-{route['server_id']}",
+                    "shortIds": ["abcd"], "settings": {"fingerprint": "firefox"},
+                }},
             )
             profiles.append({"enabled": True, "vless_urls": [url]})
         links = base64.b64decode(encode_subscription(profiles)).decode().splitlines()
         self.assertEqual([(urlsplit(link).hostname, urlsplit(link).port) for link in links], [
-            ("vpn.dlgtw.ru", 24443), ("vpn.dlgtw.ru", 24444), ("vpn.dlgtw.ru", 24445),
+            ("vpn.dlgtw.ru", 443), ("vpn.dlgtw.ru", 443), ("vpn.dlgtw.ru", 443),
         ])
+        self.assertEqual([urlsplit(link).username for link in links], expected_uuids)
+        self.assertEqual([parse_qs(urlsplit(link).query)["sni"][0] for link in links], expected_snis)
+        self.assertEqual([route["listen_port"] for route in load_relay_routes()["routes"]], [24443, 24444, 24445])
+        self.assertEqual(load_relay_routes()["routes"], self.configuration["routes"])
         profiles[-1]["enabled"] = False
-        self.assertEqual(len(base64.b64decode(encode_subscription(profiles)).decode().splitlines()), 2)
+        self.assertEqual(base64.b64decode(encode_subscription(profiles)).decode().splitlines(), links[:2])
 
 
 if __name__ == "__main__":

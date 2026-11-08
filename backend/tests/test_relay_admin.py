@@ -78,13 +78,19 @@ class RelayAdminTests(unittest.TestCase):
         self.assertEqual(self.probe.call_args_list[0].args, ("192.0.2.20", 34443))
 
     def test_unreachable_new_port_leaves_files_and_live_route_unchanged(self):
-        old = self.routes_path.read_text()
+        old_routes, old_config = self.routes_path.read_bytes(), self.config_path.read_bytes()
+        old_live = dict(self.live)
         self.probe.side_effect = OSError("unreachable")
-        with self.assertRaisesRegex(relay.RelayUpdateError, "VPN-порт"):
+        with self.assertRaises(relay.RelayUpdateError) as raised:
             relay.sync_server_relay(self.server)
-        self.assertEqual(self.routes_path.read_text(), old)
-        self.assertEqual(self.live["vpn_2_2"], ("192.0.2.2", 30001))
+        self.assertIn("192.0.2.20:30001", str(raised.exception))
+        self.assertIn("TCP/TLS", str(raised.exception))
+        self.assertIsInstance(raised.exception.__cause__, OSError)
+        self.assertEqual(self.routes_path.read_bytes(), old_routes)
+        self.assertEqual(self.config_path.read_bytes(), old_config)
+        self.assertEqual(self.live, old_live)
         self.assertFalse(any(command.startswith("set server") for command in self.commands))
+        self.xui.client.close.assert_called_once()
 
     def test_missing_inbound_does_not_change_any_route(self):
         self.xui.get_inbounds.return_value = []
